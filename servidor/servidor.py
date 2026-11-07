@@ -1231,7 +1231,8 @@ async def api_rotar_clave(req: Request):
     return {"ok": True, "nueva": str(CFG.get("contrasena", "")), "dias": 90}
 
 @app.post("/api/auto-actualizar")
-async def api_auto_actualizar(req: Request):    """Dispara la actualización automática de la PC desde el teléfono."""
+async def api_auto_actualizar(req: Request):
+    """Dispara la actualización automática de la PC desde el teléfono."""
     token = req.cookies.get("sesion", "")
     if not token_valido(token):
         return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)

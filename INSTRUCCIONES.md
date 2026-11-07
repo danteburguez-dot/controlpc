@@ -84,9 +84,14 @@ se va de internet, la PC y el teléfono siguen conectados:
 ## 7. Seguridad
 
 - La **contraseña** es obligatoria y se guarda en `servidor\config.json`.
-  Puedes cambiarla editando ese archivo (se cierra y guarda) y reiniciando `iniciar.bat`.
+  Puedes cambiarla editando ese archivo y reiniciando `iniciar.bat`.
+- **Doble clic en `login.bat`** para ver la contraseña actual en pantalla;
+  si abajo respondes **Y** a *"Quiere obtener una nueva contraseña? Y/N"* se
+  renueva al instante y se cortan todas las sesiones (los teléfonos vuelven
+  a pedir la clave con la nueva).
+- Cada **90 días** cambia sola (te aparece una ventana en la PC con la nueva).
 - Cada sesión dura 90 días; después pide la clave de nuevo.
-- Cambia la contraseña si la compartes con alguien y después de su uso.
+- Limite antifuerza bruta: 8 intentos fallidos por minuto.
 
 ## 8. Términos de la APK nativa
 
