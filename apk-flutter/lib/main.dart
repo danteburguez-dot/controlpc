@@ -19,7 +19,7 @@ import "package:shared_preferences/shared_preferences.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
-const String VERSION_APP = "1.3";
+const String VERSION_APP = "1.4";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -127,7 +127,7 @@ class _ControlPCAppState extends State<ControlPCApp> {
       await prefs.setString(Conexion.clavePrefs, "${c.host}|${c.puerto}|${c.token}");
       return null;
     } catch (_) {
-      return "No se pudo conectar: revisa IP, puerto y que el servidor esté abierto";
+      return "No se pudo conectar: revisa IP, que el servidor esté abierto y que el Firewall de la PC tenga la regla \"Control PC\" (el .bat iniciar_admin.bat la agrega)";
     }
   }
 
@@ -190,9 +190,32 @@ class _PantallaAccesoState extends State<PantallaAcceso> {
 
   Future<void> _entrar() async {
     setState(() { ocupado = true; error = null; errorClave = false; });
+
+    // Limpieza de lo escrito en el campo IP: si el usuario pega el enlace
+    // completo (http://192.168.100.27:8566/app/ o incluso con :puerto),
+    // se extrae la IP y el Puerto automaticamente.
+    var limpio = _host.text.trim();
+    limpio = limpio.replaceFirst(RegExp(r"^https?://", caseSensitive: false), "");
+    final corte = limpio.indexOf("/");
+    if (corte > 0) limpio = limpio.substring(0, corte);
+    int? puertoPegado;
+    final dp = limpio.lastIndexOf(":");
+    if (dp >= 1) {
+      final posible = int.tryParse(limpio.substring(dp + 1));
+      if (posible != null && posible > 0 && posible < 65536) {
+        puertoPegado = posible;
+        limpio = limpio.substring(0, dp);
+      }
+    }
+    final hostLimpio = limpio.trim();
+    final puertoFinal = puertoPegado ?? (int.tryParse(_puerto.text.trim()) ?? 8566);
+    if (_puerto.text.trim().isEmpty && puertoPegado != null) {
+      _puerto.text = "$puertoPegado";
+    }
+
     final mensaje = await widget.alEntrar(
-      _host.text.trim(),
-      int.tryParse(_puerto.text.trim()) ?? 8566,
+      hostLimpio,
+      puertoFinal,
       _clave.text.trim(),
     );
     if (!mounted) return;
