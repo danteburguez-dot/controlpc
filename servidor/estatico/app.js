@@ -15,6 +15,7 @@ const S = {
   panx: 0, pany: 0,   // desplazamiento local (px CSS)
   g: null,            // geometría calculada {s, ox, oy, z, oxz, oyz}
   gest2: null,        // estado del gesto con dos dedos
+  enVuelo: 0,         // decodificaciones de imagen en curso (se limitan a 2)
   casosCerrados: [],  // momentos de cierres de WS para detectar sesión caducada
 };
 
@@ -29,6 +30,242 @@ function mostrarPrincipal() {
   $("vista-acceso").hidden = true;
   $("vista-principal").hidden = false;
 }
+
+/* ======== volumen y sonido ======== */
+let volumenArrastrando = false;
+let mudoActual = false;
+
+async function enviarVolumen(nivel, mudo) {
+  const cuerpo = {};
+  if (nivel !== undefined && nivel !== null) cuerpo.nivel = nivel;
+  if (mudo !== undefined && mudo !== null) cuerpo.mudo = mudo;
+  try {
+    const r = await fetch("/api/volumen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo),
+    });
+    aplicarVolumenUI(await r.json());
+  } catch (e) {}
+}
+
+function aplicarVolumenUI(v) {
+  if (!v) return;
+  $("slider-volumen").disabled = !v.soportado;
+  if (!volumenArrastrando && v.nivel !== null && v.nivel !== undefined) {
+    $("slider-volumen").value = v.nivel;
+  }
+  $("valor-volumen").textContent = v.nivel === null ? "–" : v.nivel + "%";
+  mudoActual = !!v.mudo;
+  $("btn-mudo").textContent = mudoActual ? "🔊" : "🔇";
+  $("boton-volumen").textContent = mudoActual ? "🔇" : "🔊";
+}
+
+$("slider-volumen").addEventListener("input", () => {
+  $("valor-volumen").textContent = $("slider-volumen").value + "%";
+});
+$("slider-volumen").addEventListener("change", () => {
+  enviarVolumen(Number($("slider-volumen").value));
+});
+$("slider-volumen").addEventListener("pointerdown", () => { volumenArrastrando = true; });
+window.addEventListener("pointerup", () => { volumenArrastrando = false; });
+$("btn-mudo").onclick = () => enviarVolumen(null, !mudoActual);
+
+/* sonido en vivo (loopback WASAPI -> WebSocket -> AudioWorklet) */
+let ctxA = null, wsA = null, nodoA = null, escuchando = false;
+const CODIGO_REPRODUCTOR = `
+class Reproductor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.cap = 65536;
+    this.mask = this.cap - 1;
+    this.buf = new Float32Array(this.cap);
+    this.leer = 0;
+    this.escribir = 0;
+    this.port.onmessage = (e) => this.entrar(new Float32Array(e.data));
+  }
+  entrar(f) {
+    const mask = this.mask;
+    for (let i = 0; i < f.length; i++) {
+      if (this.escribir - this.leer >= this.cap) this.leer++;
+      this.buf[this.escribir & mask] = f[i];
+      this.escribir++;
+    }
+  }
+  process(inputs, outputs) {
+    const out = outputs[0][0];
+    const mask = this.mask;
+    for (let i = 0; i < out.length; i++) {
+      if (this.escribir === this.leer) out[i] = 0;
+      else { out[i] = this.buf[this.leer & mask]; this.leer++; }
+    }
+    return true;
+  }
+}
+registerProcessor("reproductor", Reproductor);`;
+
+async function encenderSonido() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  try {
+    wsA = new WebSocket(`${proto}://${location.host}/ws-audio`);
+    wsA.binaryType = "arraybuffer";
+    const meta = await new Promise((res) => {
+      wsA.onmessage = (ev) => {
+        if (typeof ev.data === "string") return res(JSON.parse(ev.data));
+      };
+      wsA.onerror = () => res({ sr: 0, error: "no se pudo conectar" });
+      setTimeout(() => res({ sr: 0, error: "sin respuesta del servidor" }), 5000);
+    });
+    if (meta.error || !meta.sr) {
+      $("nota-audio").textContent = "❌ " + (meta.error || "audio no disponible");
+      apagarSonido();
+      return;
+    }
+    if (!ctxA) ctxA = new AudioContext({ latencyHint: "interactive" });
+    if (!nodoA) {
+      const url = URL.createObjectURL(new Blob([CODIGO_REPRODUCTOR], { type: "text/javascript" }));
+      await ctxA.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      nodoA = new AudioWorkletNode(ctxA, "reproductor");
+      nodoA.connect(ctxA.destination);
+    }
+    wsA.onmessage = (ev) => {
+      if (typeof ev.data === "string") return;
+      try {
+        const i16 = new Int16Array(ev.data);
+        const f = new Float32Array(i16.length);
+        for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
+        nodoA.port.postMessage(f.buffer, [f.buffer]);
+      } catch (e) {}
+    };
+    await ctxA.resume();
+    escuchando = true;
+    $("btn-sonido").textContent = "⏸ Detener sonido";
+    $("estado-audio").textContent = "escuchando · " + meta.sr + " Hz";
+    $("nota-audio").textContent = "Sonido de la PC al instante (una fracción de segundo de demora es normal).";
+  } catch (e) {
+    $("nota-audio").textContent = "❌ No se pudo abrir el sonido: " + (e.message || e);
+    apagarSonido();
+  }
+}
+
+function apagarSonido() {
+  escuchando = false;
+  try { if (wsA) wsA.close(); } catch (e) {}
+  wsA = null;
+  $("btn-sonido").textContent = "▶ Escuchar el sonido de la PC";
+  $("estado-audio").textContent = "apagado";
+}
+$("btn-sonido").onclick = () => { if (escuchando) apagarSonido(); else encenderSonido(); };
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && escuchando) apagarSonido();
+});
+
+/* ======== avisos ======== */
+let ultimoAvisoId = 0;
+
+function tiempoHace(s) {
+  if (s < 60) return s + " s";
+  if (s < 3600) return Math.floor(s / 60) + " min";
+  return Math.floor(s / 3600) + " h";
+}
+
+function toastAviso(a) {
+  const d = document.createElement("div");
+  d.className = "aviso-flotante " + a.nivel;
+  d.innerHTML = `<div class="aviso-texto">${a.texto}</div>${a.seguridad ? `
+    <div class="aviso-botones">
+      <button data-acc="permitir">✅ Permitir</button>
+      <button data-acc="rechazar">🚫 Rechazar</button>
+    </div>` : ""}`;
+  d.querySelectorAll("[data-acc]").forEach((b) => {
+    b.onclick = () => accionSeguridad(b.dataset.acc, d);
+  });
+  $("avisos-flotantes").appendChild(d);
+  navigator.vibrate && navigator.vibrate(a.nivel === "peligro" ? [60, 40, 60] : 25);
+  setTimeout(() => d.remove(), a.seguridad ? 25000 : 7000);
+}
+
+function bloqueAvisos(lista) {
+  const items = lista.slice(0, 12).map((a) =>
+    `<div class="aviso-linea"><b>${a.nivel === "peligro" ? "🔴" : a.nivel === "advertencia" ? "🟡" : "🔵"}</b>
+      <span>${a.texto}</span><span class="texto-gris">hace ${tiempoHace(a.hace)}</span></div>`).join("");
+  $("bloque-avisos").innerHTML = `<div class="subtitulo">Avisos</div><div class="tarjeta-grupo">${items || "—"}</div>`;
+}
+
+function conectarAviso(mensaje) {
+  $("avisos-flotantes") /* por si se llama fuera de un toast */;
+  const d = document.createElement("div");
+  d.className = "aviso-flotante info";
+  d.innerHTML = `<div class="aviso-texto">${mensaje}</div>`;
+  $("avisos-flotantes").appendChild(d);
+  setTimeout(() => d.remove(), 5000);
+}
+
+async function accionSeguridad(accion, elemento) {
+  try {
+    const r = await fetch("/api/seguridad-accion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion }),
+    });
+    const d = await r.json();
+    let mensaje;
+    if (d.ok && accion === "rechazar") mensaje = "🚫 Ventana rechazada desde el teléfono";
+    else if (d.ok) mensaje = "✅ " + (d.mensaje || "Modo silencioso aplicado");
+    else if (d.error === "requiere-admin") mensaje = "⚠️ Corre el servidor con iniciar_admin.bat para poder rechazar";
+    else if (d.pendiente) mensaje = "📝 Autoriza la ventana de Windows en la PC";
+    else mensaje = "⚠️ No se pudo: " + (d.error || "?");
+    const t = elemento.querySelector(".aviso-texto");
+    if (t) t.innerHTML = mensaje;
+    elemento.querySelectorAll(".aviso-botones").forEach((b) => b.remove());
+    setTimeout(() => elemento.remove(), 4000);
+    obtenerEstado();
+  } catch (e) {}
+}
+
+function procesarAvisos(datos) {
+  const lista = datos.avisos || [];
+  if (!lista.length) { bloqueAvisos([]); return; }
+  const maxId = lista.reduce((m, a) => Math.max(m, a.id), 0);
+  if (ultimoAvisoId === 0) { ultimoAvisoId = maxId; bloqueAvisos(lista); return; }
+  if (maxId > ultimoAvisoId) {
+    lista.filter((a) => a.id > ultimoAvisoId).forEach(toastAviso);
+    ultimoAvisoId = maxId;
+  }
+  bloqueAvisos(lista);
+}
+
+/* ======== UAC ======== */
+$("btn-uac").onclick = async () => {
+  const silencioso = $("estado-uac").textContent.indexOf("silencioso") >= 0;
+  const nuevo = silencioso ? "aviso" : "silencioso";
+  const seguir = confirm(nuevo === "silencioso"
+    ? "Windows dejará de preguntar los permisos de administración en la PC (menos seguro; se puede revertir aquí mismo). ¿Seguro?"
+    : "¿Volver a que Windows pregunte los permisos de administración?");
+  if (!seguir) return;
+  try {
+    const r = await fetch("/api/uac", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modo: nuevo }),
+    });
+    const d = await r.json();
+    if (d.ok && d.pendiente) alert("Windows abrirá una ventana EN TU PC: autorizala para aplicar el cambio.");
+    obtenerEstado();
+  } catch (e) {}
+};
+
+$("btn-prueba-aviso").onclick = async () => {
+  try {
+    await fetch("/api/aviso", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto: "🔔 ¡Aviso de prueba desde los ajustes!" }),
+    });
+    obtenerEstado();
+  } catch (e) {}
+};
 
 /* ============ acceso ============ */
 async function entrar() {
@@ -89,16 +326,20 @@ function conectar() {
         mostrarAcceso();
       }
     } else {
-      // fotograma JPEG binario -> imagen
+      // fotograma JPEG: se decodifican como máximo 2; el resto se descarta
+      // para dibujar SIEMPRE el fotograma más nuevo (latencia mínima)
+      if (S.enVuelo >= 2) return;
+      S.enVuelo++;
       const blob = new Blob([ev.data], { type: "image/jpeg" });
       createImageBitmap(blob).then((bmp) => {
+        S.enVuelo--;
         const cambio = bmp.width !== S.iw || bmp.height !== S.ih;
         if (S.img) S.img.close && S.img.close();
         S.img = bmp;
         S.iw = bmp.width;
         S.ih = bmp.height;
         if (cambio) { S.z = 1; S.panx = 0; S.pany = 0; }
-      }).catch(() => {});
+      }).catch(() => { S.enVuelo--; });
     }
   };
   ws.onclose = (ev) => {
@@ -420,7 +661,7 @@ lienzo.addEventListener("wheel", (ev) => {
 
 /* ============ paneles ============ */
 function activarPanel(id, boton) {
-  const ids = ["panel-estado", "panel-config", "panel-teclado"];
+  const ids = ["panel-estado", "panel-config", "panel-teclado", "panel-volumen"];
   document.querySelectorAll(".opcion").forEach((b) => b.classList.remove("activa"));
   let abierto = false;
   ids.forEach((i) => {
@@ -433,6 +674,7 @@ function activarPanel(id, boton) {
 $("boton-estado").onclick = (e) => activarPanel("panel-estado", e.currentTarget);
 $("boton-config").onclick = (e) => activarPanel("panel-config", e.currentTarget);
 $("boton-teclado").onclick = (e) => activarPanel("panel-teclado", e.currentTarget);
+$("boton-volumen").onclick = (e) => activarPanel("panel-volumen", e.currentTarget);
 document.querySelectorAll(".cerrar").forEach((b) => {
   b.onclick = (e) => { activarPanel(null, null); };
 });
@@ -520,6 +762,13 @@ setInterval(obtenerEstado, 2500);
 setInterval(() => { if ($("vista-principal").hidden && S.ws === null && S.img) mostrarPrincipal(); }, 15000);
 
 function renderEstado(d) {
+  procesarAvisos(d);
+  if (d.volumen) aplicarVolumenUI(d.volumen);
+  if (d.uac) {
+    const silencioso = d.uac.modo === "silencioso";
+    $("estado-uac").textContent = silencioso ? "modo silencioso ✓" : "preguntando (UAC activo)";
+    $("btn-uac").textContent = silencioso ? "🔊 Volver a pedir permisos" : "🔒 Dejar de preguntar";
+  }
   const bateria = d.bateria
     ? `<div class="linea"><span>Batería</span><span>${d.bateria.pct}% ${d.bateria.enchufado ? "⚡" : "🔋"}</span></div>`
     : "";
@@ -542,6 +791,7 @@ function renderEstado(d) {
       <div class="linea"><span>Total red</span><span>↓${d.red_total_baja_gb} GB · ↑${d.red_total_sube_gb} GB</span></div>
       <div class="linea"><span>Encendido</span><span>${segsAHora(d.encendido_s)}</span></div>
       <div class="linea"><span>Equipo</span><span>${d.host || "?"}</span></div>
+      <div class="linea"><span>Servidor</span><span>${d.privilegio === "administrador" ? "administrador ✓ (puede rechazar UAC)" : "usuario normal"}</span></div>
       <div class="linea"><span>Sistema</span><span class="texto-gris">${(d.os || "").slice(0, 28)}</span></div>
     </div>
     <div class="subtitulo">Procesos más pesados</div>

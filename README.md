@@ -103,7 +103,7 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
    TELEFONO (PWA / APK)                 PC (Windows, Python)
  ┌─────────────────────────┐        ┌──────────────────────────────────┐
  │ <canvas> dibuja JPEGs    │  WS ─▶ │ servidor.py + uvicorn (puerto…)  │
- │ capturas: ~10-15 fps     │ ◀─ WS  │  • mss: captura la pantalla      │
+ │ capturas: 10-30 fps      │ ◀─ WS  │  • mss: captura la pantalla      │
  │ gestos → JSON de eventos │        │  • Pillow: escala + JPEG + flecha│
  │ /api/estado → tarjetas   │ HTTP ▶ │  • psutil: CPU/RAM/discos/red    │
  │ login (cookie 90 días)   │        │  • pyautogui: ratón/teclado real │

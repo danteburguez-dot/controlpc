@@ -35,6 +35,7 @@
     <span id="punto-estado" class="punto amarillo"></span>
     <span id="texto-estado">Conectando…</span>
     <span id="texto-ping"></span>
+    <button id="boton-volumen" class="boton-ico" title="Volumen y sonido de la PC">🔊</button>
     <span class="flex"></span>
     <button id="boton-captura" class="boton-ico" title="Guardar captura">📷</button>
     <button id="boton-completa" class="boton-ico" title="Pantalla completa">⛶</button>
@@ -66,6 +67,7 @@
       <div id="cuerpo-estado" class="cuerpo-estado">
         <div class="texto-gris centrado">Cargando datos…</div>
       </div>
+      <div id="bloque-avisos"></div>
       <div id="info-acceso" class="info-acceso texto-gris"></div>
     </div>
   </aside>
@@ -77,17 +79,17 @@
       <div class="fila-config">
         <label>Calidad de imagen</label>
         <select id="sel-calidad">
-          <option value="0">Muy baja (móvil lento)</option>
-          <option value="1" selected>Media</option>
+          <option value="0" selected>Rápida (recomendada)</option>
+          <option value="1">Media</option>
           <option value="2">Alta</option>
           <option value="3">Máxima</option>
         </select>
       </div>
       <div class="fila-config">
         <label>Fotogramas por segundo</label>
-        <span id="valor-fps" class="texto-gris">12</span>
+        <span id="valor-fps" class="texto-gris">24</span>
       </div>
-      <input id="sel-fps" type="range" min="3" max="24" value="12">
+      <input id="sel-fps" type="range" min="3" max="30" value="24">
       <div class="fila-config">
         <label>Monitor</label>
         <select id="sel-pantalla">
@@ -110,7 +112,35 @@
           <li>🎯 La flecha del ratón se ve en la imagen; se pone roja mientras el botón está presionado</li>
         </ul>
       </details>
+      <div class="subtitulo">Avisos de seguridad (UAC)</div>
+      <div class="fila-config">
+        <label>Ventana de permisos de Windows</label>
+        <span id="estado-uac" class="texto-gris">–</span>
+      </div>
+      <button id="btn-uac" class="boton">Cambiar modo…</button>
+      <p class="texto-gris" style="font-size:11px; line-height:1.5">
+        Cuando la PC muestre una ventana de permisos, el teléfono recibe una
+        notificación con ✅ Permitir (modo silencioso) o 🚫 Rechazar. Para poder
+        rechazar, corre el servidor con <b>iniciar_admin.bat</b>.
+      </p>
+      <button id="btn-prueba-aviso" class="boton">🔔 Probar aviso</button>
       <button id="btn-cerrar-sesion" class="boton peligro">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <!-- -------- Panel VOLUMEN / SONIDO -------- -->
+  <aside id="panel-volumen" class="panel borde-abajo" hidden>
+    <div class="barra-titulo"><span>Volumen y sonido de la PC</span><button class="cerrar" data-cierra="panel-volumen">✕</button></div>
+    <div class="contenido-panel">
+      <div class="fila-vol">
+        <button id="btn-mudo" class="boton-ico mudito">🔇</button>
+        <input id="slider-volumen" type="range" min="0" max="100" value="0" disabled>
+        <span id="valor-volumen" class="texto-gris">–</span>
+      </div>
+      <div class="subtitulo">Sonido en vivo</div>
+      <button id="btn-sonido" class="boton">▶ Escuchar el sonido de la PC</button>
+      <p id="estado-audio" class="texto-gris" style="font-size:12.5px">apagado</p>
+      <p id="nota-audio" class="texto-gris" style="font-size:12px"></p>
     </div>
   </aside>
 
@@ -159,6 +189,8 @@
   </aside>
 
 </section>
+
+<div id="avisos-flotantes"></div>
 
 <script src="app.js"></script>
 </body>

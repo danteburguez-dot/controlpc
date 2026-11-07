@@ -17,6 +17,7 @@ La contraseña se guarda en config.json la primera vez.
 """
 
 import asyncio
+import collections
 import ctypes
 import hmac
 import io
@@ -46,6 +47,13 @@ from PIL import Image, ImageDraw, ImageFont
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
+try:
+    from comtypes import CLSCTX_ALL
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    PYCAW = True
+except Exception:
+    PYCAW = False
+
 BASE = Path(__file__).resolve().parent
 ESTATICO = BASE / "estatico"
 ARCHIVO_CONFIG = BASE / "config.json"
@@ -67,7 +75,7 @@ def cargar_config() -> dict:
         "contrasena": "",
         "pantalla": 1,
         "ancho_maximo": 1280,
-        "fps": 12,
+        "fps": 24,
         "calidad_jpeg": 60,
     }
     if ARCHIVO_CONFIG.exists():
@@ -131,7 +139,236 @@ def podar_sesiones() -> None:
     for t in [t for t, e in SESIONES.items() if e < ahora]:
         SESIONES.pop(t, None)
 
-# ------------------------------------------------------------------ estado ---
+# ------------------------------------------------------------------- avisos ---
+
+AVISOS = collections.deque(maxlen=40)
+AVISO_SEQ = [0]
+ENFRIAMIENTO = {}
+SEGURIDAD = {"detectado": False, "desde": 0.0}
+
+def _agregar_aviso(nivel: str, texto: str, clave: str = "", enfriamiento: float = 0.0,
+                   seguridad: bool = False) -> None:
+    ahora = time.time()
+    if clave:
+        anterior = ENFRIAMIENTO.get(clave, 0.0)
+        if ahora - anterior < enfriamiento:
+            return
+        ENFRIAMIENTO[clave] = ahora
+    AVISO_SEQ[0] += 1
+    AVISOS.appendleft({
+        "id": AVISO_SEQ[0],
+        "nivel": nivel,
+        "texto": texto,
+        "tiempo": ahora,
+        "seguridad": seguridad,
+    })
+
+def _lista_avisos() -> list:
+    ahora = time.time()
+    salida = []
+    for a in list(AVISOS):
+        av = dict(a)
+        av["hace"] = int(ahora - av["tiempo"])
+        av.pop("tiempo", None)
+        salida.append(av)
+    return salida
+
+# ------------------------------------------------------------------- audio ---
+
+AUDIO = {"sr": 0, "clientes": 0, "error": ""}
+AUDIO_CLIENTES = []   # [{"cola": asyncio.Queue, "loop": ...}]
+AUDIO_DETENER = threading.Event()
+
+def _estado_privilegio() -> str:
+    try:
+        return "administrador" if ctypes.windll.shell32.IsUserAnAdmin() else "usuario"
+    except Exception:
+        return "usuario"
+
+def _empujar_audio(cliente, datos: bytes) -> None:
+    try:
+        cliente["cola"].put_nowait(datos)
+    except asyncio.QueueFull:
+        # descarta lo viejo: el que escucha siempre oye lo más reciente
+        try:
+            cliente["cola"].get_nowait()
+            cliente["cola"].put_nowait(datos)
+        except Exception:
+            pass
+
+def _envia_audio(datos: bytes) -> None:
+    for cliente in list(AUDIO_CLIENTES):
+        try:
+            cliente["loop"].call_soon_threadsafe(_empujar_audio, cliente, datos)
+        except Exception:
+            pass
+
+def _bucle_audio() -> None:
+    """Captura el sonido completo del sistema (loopback) y lo reparte."""
+    try:
+        import numpy as np
+        import soundcard as sc
+    except Exception as e:
+        AUDIO["error"] = f"no hay libreria de audio: {e}"
+        return
+    try:
+        salida = sc.default_speaker()
+        micro = sc.get_microphone(id=str(salida.id), include_loopback=True)
+        ultimo = None
+        for sr in (48000, 44100):
+            try:
+                with micro.recorder(samplerate=sr) as rec:
+                    AUDIO["sr"] = sr
+                    AUDIO["error"] = ""
+                    while not AUDIO_DETENER.is_set():
+                        cuadro = rec.record(numframes=960)   # 20 ms
+                        mono = np.asarray(cuadro, dtype="float32").mean(axis=1)
+                        datos = (np.clip(mono, -1.0, 1.0) * 32760.0).astype("<i2").tobytes()
+                        _envia_audio(datos)
+                return
+            except Exception as e:
+                ultimo = e
+        AUDIO["error"] = f"no se pudo abrir el audio: {ultimo}"
+    except Exception as e:
+        AUDIO["error"] = f"audio: {e}"
+
+# ------------------------------------------------------------------- volumen ---
+
+def _interfaz_volumen():
+    """Devuelve la interfaz de volumen maestra de Windows (pycaw, rutas nueva y vieja)."""
+    if not PYCAW:
+        return None
+    try:
+        altavoces = AudioUtilities.GetSpeakers()
+        if hasattr(altavoces, "EndpointVolume"):      # pycaw moderno
+            return altavoces.EndpointVolume
+        interfaz = altavoces.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        return interfaz.QueryInterface(IAudioEndpointVolume)
+    except Exception:
+        return None
+
+def _leer_volumen() -> dict:
+    if PYCAW:
+        try:
+            vol = _interfaz_volumen()
+            if vol is not None:
+                return {
+                    "soportado": True,
+                    "nivel": int(round(vol.GetMasterVolumeLevelScalar() * 100)),
+                    "mudo": bool(vol.GetMute()),
+                }
+        except Exception:
+            pass
+    return {"soportado": False, "nivel": None, "mudo": False}
+
+SUMA_FALLBACK = [50]
+
+def _aplicar_volumen(nivel, mudo) -> dict:
+    if PYCAW:
+        try:
+            vol = _interfaz_volumen()
+            if vol is not None:
+                if nivel is not None:
+                    vol.SetMasterVolumeLevelScalar(
+                        max(0.0, min(1.0, float(nivel) / 100.0)), None)
+                if mudo is not None:
+                    vol.SetMute(1 if mudo else 0, None)
+                estado = _leer_volumen()
+                estado["ok"] = True
+                return estado
+        except Exception:
+            pass
+    # Parejo sin pycaw: teclas de volumen (aproximado)
+    try:
+        if nivel is not None:
+            objetivo = max(0, min(100, int(nivel)))
+            pasos = max(-25, min(25, (objetivo - SUMA_FALLBACK[0]) // 2))
+            tecla = "volumeup" if pasos > 0 else "volumedown"
+            for _ in range(abs(pasos)):
+                pyautogui.press(tecla, _pause=False)
+            SUMA_FALLBACK[0] = objetivo
+        if mudo:
+            pyautogui.press("volumemute", _pause=False)
+            SUMA_FALLBACK[0] = 0 if mudo else SUMA_FALLBACK[0]
+        return {"soportado": False, "nivel": SUMA_FALLBACK[0], "mudo": bool(mudo) if mudo is not None else False, "ok": True}
+    except Exception:
+        return {"soportado": False, "nivel": None, "mudo": False, "ok": False}
+
+# --------------------------------------------------------------- seguridad UAC ---
+
+def _leer_uac() -> dict:
+    if os.name != "nt":
+        return {"soportado": False, "modo": "aviso"}
+    try:
+        import winreg
+        clave = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
+        cpa, _t = winreg.QueryValueEx(clave, "ConsentPromptBehaviorAdmin")
+        winreg.CloseKey(clave)
+        return {"soportado": True,
+                "modo": "silencioso" if int(cpa) == 0 else "aviso"}
+    except Exception:
+        return {"soportado": True, "modo": "aviso"}
+
+def _aplicar_uac(modo: str) -> dict:
+    """Cambia los avisos de administración (UAC). Si el servidor ya corre como
+    administrador lo aplica directo; si no, pide la ventana de Windows una vez."""
+    quieto = modo == "silencioso"
+    try:
+        if _estado_privilegio() == "administrador":
+            import winreg
+            clave = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+                0, winreg.KEY_SET_VALUE)
+            winreg.SetValueEx(clave, "ConsentPromptBehaviorAdmin", 0,
+                              winreg.REG_DWORD, 0 if quieto else 2)
+            winreg.SetValueEx(clave, "PromptOnSecureDesktop", 0,
+                              winreg.REG_DWORD, 0 if quieto else 1)
+            winreg.CloseKey(clave)
+            _agregar_aviso("info", "Modo de avisos de seguridad actualizado en la PC")
+            return {"ok": True, "metodo": "directo", **_leer_uac()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+    # sin permisos: abre la ventana de Windows para que la autorices en la PC
+    try:
+        comando = (
+            "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System'"
+            f" -Name ConsentPromptBehaviorAdmin -Value {0 if quieto else 2};"
+            f" Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System'"
+            f" -Name PromptOnSecureDesktop -Value {0 if quieto else 1};"
+        )
+        indicadores = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-Command",
+             "Start-Process powershell -Verb RunAs -WindowStyle Hidden"
+             " -ArgumentList '-NoProfile','-Command','" + comando + "'"],
+            creationflags=indicadores)
+        _agregar_aviso("info", "Autoriza la ventana de permisos en la PC para aplicar el cambio")
+        return {"ok": True, "metodo": "ventana-en-la-pc", "pendiente": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+
+def _rechazar_consentimiento() -> dict:
+    if _estado_privilegio() != "administrador":
+        return {"ok": False, "error": "requiere-admin"}
+    try:
+        matados = 0
+        for p in psutil.process_iter(["name", "pid"]):
+            n = (p.info["name"] or "").lower()
+            if n in ("consent.exe", "credentialuibroker.exe"):
+                try:
+                    psutil.Process(int(p.info["pid"])).kill()
+                    matados += 1
+                except Exception:
+                    pass
+        if matados:
+            _agregar_aviso("info", "Aviso de seguridad rechazado desde el teléfono")
+        return {"ok": True, "rechazados": matados}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+
 
 ESTADO: dict = {}
 
@@ -141,6 +378,11 @@ def _bucle_estado() -> None:
     psutil.cpu_percent(interval=None)  # primer sondeo para inicializar
     red_prev = psutil.net_io_counters()
     t_prev = time.time()
+    bat_enchufado = None
+    racha_baja = racha_peligro = False
+    ram_flag = False
+    discos_flag = set()
+    cpu_racha = 0
     while True:
         try:
             time.sleep(2.5)
@@ -192,6 +434,63 @@ def _bucle_estado() -> None:
             procesos.sort(key=lambda p: p["cpu"], reverse=True)
             procesos = procesos[:6]
 
+            # ------------------- avisos automáticos -------------------
+            if bateria is not None:
+                pct = int(bateria["pct"])
+                enchufado = bateria["enchufado"]
+                if bat_enchufado is True and not enchufado:
+                    _agregar_aviso("info", f"Se desconectó el cargador ({pct}%)")
+                if bat_enchufado is False and enchufado:
+                    _agregar_aviso("info", f"Enchufado: cargando batería ({pct}%) ⚡")
+                bat_enchufado = enchufado
+                if not enchufado and pct <= 25 and not racha_baja:
+                    racha_baja = True
+                    _agregar_aviso("advertencia", f"Batería baja: {pct}% sin cargador")
+                if not enchufado and pct <= 10 and not racha_peligro:
+                    racha_peligro = True
+                    _agregar_aviso("peligro", f"¡Batería casi agotada: {pct}%! Conecta el cargador")
+                if pct > 30:
+                    racha_baja = False
+                    racha_peligro = False
+            if mem.percent > 92 and not ram_flag:
+                ram_flag = True
+                _agregar_aviso("advertencia", f"Memoria al límite: {mem.percent:.0f}% usada")
+            if mem.percent < 82:
+                ram_flag = False
+            for disco in discos:
+                if disco["pct"] > 95 and disco["montaje"] not in discos_flag:
+                    discos_flag.add(disco["montaje"])
+                    _agregar_aviso("advertencia", f"Disco {disco['montaje']}: {disco['libre_gb']} GB libres")
+                elif disco["pct"] < 90:
+                    discos_flag.discard(disco["montaje"])
+            if cpu > 92:
+                cpu_racha += 1
+                if cpu_racha >= 24:   # ~60 s sostenido
+                    cpu_racha = 0
+                    _agregar_aviso("advertencia", "CPU de altísimo uso hace más de un minuto",
+                                   clave="cpu-alta", enfriamiento=900)
+            else:
+                cpu_racha = 0
+
+            # ------------------- ventana de permisos (UAC) -------------------
+            try:
+                visto = False
+                for proc in psutil.process_iter(["name"]):
+                    nombre = (proc.info["name"] or "").lower()
+                    if nombre in ("consent.exe", "credentialuibroker.exe"):
+                        visto = True
+                        break
+            except Exception:
+                visto = SEGURIDAD["detectado"]
+            if visto and not SEGURIDAD["detectado"]:
+                SEGURIDAD["detectado"] = True
+                SEGURIDAD["desde"] = time.time()
+                _agregar_aviso("peligro", "🛡️ Ventana de permisos de administrador esperando en la PC",
+                               "", 0.0, True)
+            elif not visto and SEGURIDAD["detectado"]:
+                SEGURIDAD["detectado"] = False
+                _agregar_aviso("info", "La ventana de permisos se cerró o respondió")
+
             ESTADO = {
                 "cpu": round(cpu, 0),
                 "ram_pct": round(mem.percent, 0),
@@ -242,6 +541,14 @@ def ip_principal() -> str:
         return ip
     except Exception:
         return "127.0.0.1"
+
+def _puerto_ocupado(puerto: int) -> bool:
+    """True si ya hay algo escuchando en ese puerto (otra instancia del servidor)."""
+    try:
+        with socket.create_connection(("127.0.0.1", int(puerto)), timeout=0.6):
+            return True
+    except OSError:
+        return False
 
 # ------------------------------------------------------------------ cursor ---
 
@@ -324,11 +631,19 @@ def _capturar(sct) -> tuple:
         indice = min(1, len(sct.monitors) - 1)
     region = sct.monitors[indice]
     captura = sct.grab(region)
-    imagen = Image.frombytes("RGB", (captura.width, captura.height), captura.rgb)
+    # BGRA crudo directo (evita la copia lenta píxel a píxel de c.rgb)
+    rgba = Image.frombuffer(
+        "RGBA", (captura.width, captura.height), captura.raw, "raw", "BGRA", 0, 1
+    )
     ancho_max = max(320, min(2560, int(CFG.get("ancho_maximo", 1280))))
-    if imagen.width > ancho_max:
-        alto = max(1, round(imagen.height * ancho_max / imagen.width))
-        imagen = imagen.resize((ancho_max, alto), Image.BILINEAR)
+    if rgba.width == ancho_max * 2:
+        # ruta rápida: bajada exacta a la mitad (reduce 2) y conversión en chico
+        imagen = rgba.reduce(2).convert("RGB")
+    elif rgba.width > ancho_max:
+        alto = max(1, round(rgba.height * ancho_max / rgba.width))
+        imagen = rgba.resize((ancho_max, alto), Image.BILINEAR).convert("RGB")
+    else:
+        imagen = rgba.convert("RGB")
     # la flecha del ratón para que se vea en la app
     try:
         _superponer_cursor(imagen, region)
@@ -336,6 +651,7 @@ def _capturar(sct) -> tuple:
         pass
     calidad = max(30, min(90, int(CFG.get("calidad_jpeg", 60))))
     pago = io.BytesIO()
+    # sin optimize=True: la codificación rápida reduce la latencia de cada fotograma
     imagen.save(pago, "JPEG", quality=calidad, subsampling=1)
     return pago.getvalue(), (region["left"], region["top"], region["width"], region["height"])
 
@@ -351,11 +667,17 @@ def _bucle_captura(cola: Queue, detener: threading.Event) -> None:
                 except Exception:
                     time.sleep(0.4)
                     continue
+                # mete el fotograma descartando el viejo si la cola está llena:
+                # el teléfono siempre recibe lo MÁS reciente (cero acumulación)
                 try:
                     cola.put_nowait(datos)
                 except Full:
-                    pass
-                fps = max(1.0, min(30.0, float(CFG.get("fps", 12)) or 12.0))
+                    try:
+                        cola.get_nowait()
+                        cola.put_nowait(datos)
+                    except (Full, Empty):
+                        pass
+                fps = max(1.0, min(30.0, float(CFG.get("fps", 24)) or 24.0))
                 espera = 1.0 / fps - (time.perf_counter() - inicio)
                 if espera > 0:
                     time.sleep(espera)
@@ -559,6 +881,11 @@ async def api_estado(req: Request):
     datos["host"] = platform.node()
     datos["os"] = platform.platform(terse=True)
     datos["tailscale"] = any("tailscale" in i["nombre"].lower() for i in ips)
+    datos["avisos"] = _lista_avisos()
+    datos["volumen"] = _leer_volumen()
+    datos["uac"] = _leer_uac()
+    datos["privilegio"] = _estado_privilegio()
+    datos["seguridad"] = {"detectado": SEGURIDAD["detectado"]}
     return datos
 
 @app.get("/api/captura")
@@ -573,6 +900,161 @@ async def api_captura(req: Request):
         media_type="image/jpeg",
         headers={"Content-Disposition": "inline; filename=captura-pc.jpg"},
     )
+
+@app.get("/api/volumen")
+async def api_volumen_get(req: Request):
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    return _leer_volumen()
+
+@app.post("/api/volumen")
+async def api_volumen(req: Request):
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    try:
+        datos = await req.json()
+    except Exception:
+        datos = {}
+    nivel = datos.get("nivel", None)
+    mudo = datos.get("mudo", None)
+    if nivel is not None:
+        try:
+            nivel = max(0, min(100, int(nivel)))
+        except Exception:
+            nivel = None
+    if mudo is not None:
+        mudo = bool(mudo)
+    return _aplicar_volumen(nivel, mudo)
+
+@app.get("/api/uac")
+async def api_uac_get(req: Request):
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    return _leer_uac()
+
+@app.post("/api/uac")
+async def api_uac(req: Request):
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    try:
+        datos = await req.json()
+    except Exception:
+        datos = {}
+    modo = str(datos.get("modo", "aviso"))
+    if modo not in ("silencioso", "aviso"):
+        modo = "aviso"
+    return _aplicar_uac(modo)
+
+@app.get("/api/seguridad")
+async def api_seguridad(req: Request):
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    return {
+        "detectado": SEGURIDAD["detectado"],
+        "privilegio": _estado_privilegio(),
+        "uac": _leer_uac(),
+    }
+
+@app.post("/api/seguridad-accion")
+async def api_seguridad_accion(req: Request):
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    try:
+        datos = await req.json()
+    except Exception:
+        datos = {}
+    accion = str(datos.get("accion", ""))
+    if accion == "rechazar":
+        return _rechazar_consentimiento()
+    if accion == "permitir":
+        resultado = _aplicar_uac("silencioso")
+        if resultado.get("ok"):
+            resultado["mensaje"] = "Modo silencioso aplicado: Windows ya no preguntará"
+        return resultado
+    return {"ok": False, "error": "accion-desconocida"}
+
+@app.post("/api/aviso")
+async def api_aviso(req: Request):
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    try:
+        datos = await req.json()
+    except Exception:
+        datos = {}
+    texto = str(datos.get("texto", "")).strip()[:200] or "Aviso de prueba 🔔"
+    _agregar_aviso("info", texto)
+    return {"ok": True}
+
+@app.websocket("/ws-audio")
+async def ws_audio(ws: WebSocket):
+    token = ws.cookies.get("sesion", "") or ws.query_params.get("sesion", "")
+    await ws.accept()
+    if not token_valido(token):
+        try:
+            await ws.send_text(json.dumps({"t": "error", "m": "sin-sesion"}))
+            await ws.close(code=4401)
+        except Exception:
+            pass
+        return
+    cliente = {
+        "cola": asyncio.Queue(maxsize=24),
+        "loop": asyncio.get_running_loop(),
+    }
+    AUDIO_CLIENTES.append(cliente)
+    hay = len([c for c in AUDIO_CLIENTES if True])
+    AUDIO["clientes"] = hay
+    if hay == 1:
+        AUDIO["error"] = ""
+        AUDIO["sr"] = 0
+        AUDIO_DETENER.clear()
+        threading.Thread(target=_bucle_audio, daemon=True).start()
+        for _ in range(80):
+            if AUDIO["sr"] or AUDIO["error"]:
+                break
+            await asyncio.sleep(0.05)
+    try:
+        await ws.send_text(json.dumps({
+            "t": "meta-audio",
+            "sr": AUDIO["sr"],
+            "error": AUDIO["error"][:200],
+        }))
+        async def _enviar_audio_cliente():
+            while True:
+                try:
+                    dato = cliente["cola"].get_nowait()
+                except asyncio.QueueEmpty:
+                    await asyncio.sleep(0.004)
+                    continue
+                await ws.send_bytes(dato)
+
+        tarea_audio = asyncio.create_task(_enviar_audio_cliente())
+        try:
+            while True:
+                mensaje = await ws.receive()
+                if mensaje.get("type") == "websocket.disconnect":
+                    break
+        finally:
+            tarea_audio.cancel()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        try:
+            AUDIO_CLIENTES.remove(cliente)
+        except ValueError:
+            pass
+        if not AUDIO_CLIENTES:
+            AUDIO["sr"] = 0
+            AUDIO["error"] = ""
+            AUDIO_DETENER.set()
 
 @app.websocket("/ws")
 async def ws_pantalla(ws: WebSocket):
@@ -591,6 +1073,11 @@ async def ws_pantalla(ws: WebSocket):
     hilo = threading.Thread(target=_bucle_captura, args=(cola, detener), daemon=True)
     hilo.start()
     candado = asyncio.Lock()
+    try:
+        ws_client_host = ws.client.host if ws.client else "?"
+        _agregar_aviso("info", f"El teléfono se conectó ({ws_client_host})")
+    except Exception:
+        pass
 
     async def _enviar_fotogramas():
         while not detener.is_set():
@@ -599,6 +1086,13 @@ async def ws_pantalla(ws: WebSocket):
             except Empty:
                 await asyncio.sleep(0.004)
                 continue
+            # drena hasta el fotograma más nuevo antes de enviar (evita atraso
+            # cuando la red va más lenta que la captura)
+            while True:
+                try:
+                    dato = cola.get_nowait()
+                except Empty:
+                    break
             async with candado:
                 await ws.send_bytes(dato)
 
@@ -624,6 +1118,10 @@ async def ws_pantalla(ws: WebSocket):
     finally:
         detener.set()
         tarea.cancel()
+        try:
+            _agregar_aviso("info", "El teléfono se desconectó")
+        except Exception:
+            pass
 
 # ------------------------------------------------------------- recursos web ---
 
@@ -699,6 +1197,10 @@ if __name__ == "__main__":
     modo_prueba = "--prueba" in sys.argv
     _crear_iconos()
 
+    if not modo_prueba and _puerto_ocupado(int(CFG.get("puerto", PUERTO_DEF))):
+        print("Ya hay otro servidor de Control PC corriendo en ese puerto. Saliendo sin cambiar nada.")
+        sys.exit(3)
+
     if modo_prueba:
         print("Comprobando módulos y captura…")
         with mss.MSS() as sct:
@@ -715,6 +1217,7 @@ if __name__ == "__main__":
 
     import uvicorn
     _banner()
+    _agregar_aviso("info", "Servidor Control PC listo ✓ conecta el teléfono desde el QR")
     cert = BASE / "cert.pem"
     clave = BASE / "clave.pem"
     if cert.exists() and clave.exists():

@@ -3,6 +3,13 @@ title Control PC - Servidor
 chcp 65001 >nul
 cd /d "%~dp0"
 
+REM Modo autoarranque: se usa como RESPALDO si el servidor de administrador
+REM no arranco. Espera para darle prioridad al de admin y sale si ya corre.
+if "%~1"=="--auto" (
+  echo Autoarranque pendiente 60 s ^(respaldo^)...
+  timeout /t 60 /nobreak >nul
+)
+
 echo.
 echo =========================================
 echo    CONTROL PC - iniciando servidor...
@@ -35,6 +42,10 @@ echo [OK] Librerias listas.
 echo [2/2] Abriendo servidor...
 :loop
 python servidor.py
+if "%errorlevel%" EQU "3" (
+  echo [OK] Ya hay otro servidor corriendo. Esta copia termina sin cambiar nada.
+  exit /b 0
+)
 echo.
 echo El servidor se cerro inesperadamente. Reiniciando en 3 segundos...
 timeout /t 3 /nobreak >nul

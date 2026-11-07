@@ -1,5 +1,5 @@
 // Service worker sencillo: guarda la interfaz para que la app cargue al instante.
-const NOMBRE = "controlpc-v2";
+const NOMBRE = "controlpc-v3";
 const RECURSOS = [
   ".", "index.html", "estilos.css", "app.js", "manifest.json",
   "iconos/icon-192.png", "iconos/icon-512.png", "iconos/icon-maskable-512.png",
