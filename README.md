@@ -15,6 +15,11 @@
 
 ## 🚀 Inicio rápido (3 pasos)
 
+> 🔒 **Importante:** cada quien controla **su propia computadora**. Cuando ejecutes
+> el servidor, verás **TU IP y TU contraseña**. No existe un servidor central:
+> tu teléfono se conecta directamente a tu PC, y nadie más puede verla sin tu
+> contraseña y sin tu IP exacta.
+
 ### 1) En la PC (Windows)
 - Requisito: [Python 3.10+](https://www.python.org/downloads/) (marca *"Add python.exe to PATH"*).
 - Doble clic en `servidor\iniciar.bat` — la primera vez instala las librerías.
@@ -121,9 +126,22 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
 
 ⚠️ Ambos están en `.gitignore`: **nunca se suben al repositorio** con tu contraseña.
 
-## 🔒 Seguridad
+## 🔒 Seguridad y privacidad
 
-- Contraseña obligatoria + portabilidad de intentos (bloqueo tras 8 fallos/minuto).
+### ¿Puede alguien ver mi PC por usar este programa? **No.**
+
+- **No hay servidor central:** el programa corre **en tu propia PC** y solo sirve *tu* pantalla.
+  Cada quien se conecta a la **suya**; los datos de una PC no están en ningún lugar de la nube.
+- No se envía ningún dato a terceros: no hay analítica, ni registro remoto, ni "llamadas a casa".
+- Tu pantalla solo llega a quien abra la dirección `http://<TU-IP>:8566/app/` y **también** tenga
+  tu contraseña (se genera aleatoria al primer arranque, distinta en cada PC).
+- Tu IP de red local (`192.168.x.x`) **no es alcanzable desde internet** — solo tu teléfono
+  en la misma red puede conectarse. Para acceder desde fuera de casa se usa **Tailscale**,
+  que solo autoriza a los dispositivos de tu propia cuenta que TÚ apruebes.
+- Existen límites antifuerza bruta (bloqueo tras 8 intentos fallidos por minuto).
+- Puedes cambiar la contraseña cuando quieras editando `servidor/config.json` y reiniciar
+  el servidor. Borrar esos archivos no rompe nada: se regeneran automáticamente.
+
 - Sin HTTPS por defecto: úsalo **en redes de confianza**. Para acceso remoto,
   Tailscale cifra todo el camino (equivalente/versión superior a HTTPS doméstico).
 - Puedes cambiar la contraseña editando `servidor/config.json` y reiniciando el servidor.
