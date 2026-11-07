@@ -26,6 +26,41 @@
 > cambia solo cuando la clave cambia).
 > Windows te pedirá "Permitir acceso" la primera vez: acepta (con *redes privadas*).
 
+## 🦇 Guía completa de los 5 archivos `.bat`
+
+### 1️⃣ `iniciar.bat` — 🖥️ "Control PC - Servidor"
+- Doble clic = abre el servidor.
+- Muestra: dirección, contraseña, y los 2 QR (rápido y normal).
+- La primera vez instala las librerías.
+- Si el servidor se cae, se reinicia solo cada 3 s.
+- Si ya hay otra instancia corriendo → sale limpio sin duplicar.
+
+### 2️⃣ `iniciar_admin.bat` — 🛡️ "Control PC - Administrador"
+- Igual que el 1️⃣ pero como ADMINISTRADOR (aceptas su ventana una vez).
+- Fija la regla del Firewall de una vez para no volver a preguntar.
+- Necesario para poder 🚫 Rechazar las ventanas UAC desde el teléfono.
+
+### 3️⃣ `login.bat` — 🔑 "Control PC - Login (contrasena)"
+- Pantalla de LOGIN: muestra la contraseña actual, el ciclo restante, y los
+  2 QR de conexión (rápido/normal — siguen la clave actual).
+- Aquí abajo pregunta: `Quiere obtener una nueva contrasena? Y/N`
+- **Y** → renueva la clave, corta TODAS las sesiones y re-muestra la nueva
+  con su QR nuevo.
+- **N** → no toca nada.
+
+### 4️⃣ `autoinicio.bat` — 📌 "Control PC - Autoarranque simple"
+- Crea acceso directo en el Inicio de Windows para que el servidor se abra
+  al encender (silencioso/minimizado).
+- Sin ventanas de contraseña, solo arranca.
+
+### 5️⃣ `autoinicio_todos.bat` — 📌 "Control PC - Autoarranque completo" (recomendado)
+- Todo lo del 4️⃣ + tarea programada del servidor ADMINISTRADOR (arranca
+  elevado al iniciar sesión, sin preguntar).
+- Configura también respaldo retardado si el admin no pudiera arrancar.
+- Se ejecuta una sola vez; para revertir:
+  `schtasks /Delete /TN "ControlPC Servidor Admin" /F` y borra el atajo
+  en `shell:startup`.
+
 ### 📱 Para el teléfono (Android)
 
 | Opción | Cómo |
