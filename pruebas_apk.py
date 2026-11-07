@@ -104,6 +104,12 @@ def probar_archivo_apk():
         contenido += z.read(d)
     plugin_ok = (b"FlutterPcmSoundPlugin" in contenido) or (b"flutter_pcm_sound" in contenido)
     reportar("APK: plugin de AUDIO (flutter_pcm_sound) dentro del dex", plugin_ok)
+    # manifest: permiso INTERNET + cleartext (los dos imnopensables para la APK)
+    man = z.read("AndroidManifest.xml")
+    def tiene(s):
+        return (s.encode() in man) or (s.encode("utf-16-le") in man) or (s.encode("utf-16-be") in man)
+    reportar("APK: permiso INTERNET en el manifest", tiene("android.permission.INTERNET"))
+    reportar("APK: http-claro habilitado (usesCleartextTraffic)", tiene("usesCleartextTraffic"))
     # al menos 2 ABI? no critical
     print()
 

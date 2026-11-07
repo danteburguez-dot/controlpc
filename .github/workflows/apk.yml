@@ -75,7 +75,13 @@ jobs:
               sed -i 's/<application /<application android:usesCleartextTraffic="true" /' "$MAN"
             fi
           done
-          grep "usesCleartextTraffic" android/app/src/main/AndroidManifest.xml || true
+          # MUY IMPORTANTE: el permiso de INTERNET (la plantilla flutter no lo agrega en release)
+          for MAN in android/app/src/main/AndroidManifest.xml; do
+            if [ -f "$MAN" ] && ! grep -q "android.permission.INTERNET" "$MAN"; then
+              sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$MAN"
+            fi
+          done
+          grep -E "usesCleartextTraffic|permission.INTERNET" android/app/src/main/AndroidManifest.xml || true
           grep -E "compileSdk|targetSdk|minSdk" android/app/build.gradle* | head -8
 
       - name: Compilar APK (release)
