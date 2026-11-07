@@ -85,10 +85,13 @@ se va de internet, la PC y el teléfono siguen conectados:
 
 - La **contraseña** es obligatoria y se guarda en `servidor\config.json`.
   Puedes cambiarla editando ese archivo y reiniciando `iniciar.bat`.
-- **Doble clic en `login.bat`** para ver la contraseña actual en pantalla;
-  si abajo respondes **Y** a *"Quiere obtener una nueva contraseña? Y/N"* se
-  renueva al instante y se cortan todas las sesiones (los teléfonos vuelven
-  a pedir la clave con la nueva).
+- **Doble clic en `login.bat`** para ver la contraseña actual EN GRANDE y los
+  **dos códigos QR** de conexión: el **RÁPIDO** (lleva la clave incluida — escanea la
+  cámara y el teléfono entra sin escribir nada) y el **NORMAL** (pide la clave).
+  Como el QR rápido incluye la clave, **cambia solo** cuando la clave cambia.
+  Si abajo respondes **Y** a *"Quiere obtener una nueva contraseña? Y/N*" se
+  renueva al instante, se cortan todas las sesiones y vuelve a mostrar pantaila
+  con la nueva clave y su QR nuevo.
 - Cada **90 días** cambia sola (te aparece una ventana en la PC con la nueva).
 - Cada sesión dura 90 días; después pide la clave de nuevo.
 - Limite antifuerza bruta: 8 intentos fallidos por minuto.

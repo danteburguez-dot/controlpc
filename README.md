@@ -17,11 +17,13 @@
 |---|---|---|
 | `iniciar.bat` | **abre el servidor** (lo común) | ✅ primera vez instala librerías y muestra IP + contraseña + QR |
 | `iniciar_admin.bat` | lo mismo pero como ADMINISTRADOR (permite 🚫 rechazar UAC desde el teléfono) | opcional |
-| `login.bat` | muestra la contraseña actual y con **Y** la renueva (corta sesiones) | cuando quieras |
+| `login.bat` | muestra la contraseña actual + **2 QR**: uno que conecta el teléfono sin escribir nada (la clave va dentro del QR) y otro normal — con **Y** renueva la clave y el QR | cuando quieras |
 | `autoinicio_todos.bat` | deja configurado que **arranque solo** al encender la PC | una sola vez |
 | `config.json` | guarda tu contraseña y ajustes (no se borra al actualizar) | no tocar |
 
-> La contraseña la ves en la **consola** al arrancar, o con `login.bat`.
+> La contraseña la ves en la **consola** al arrancar, o con `login.bat` (con los
+> QR para conectar el teléfono a un toque: el QR rápido lleva la clave dentro y
+> cambia solo cuando la clave cambia).
 > Windows te pedirá "Permitir acceso" la primera vez: acepta (con *redes privadas*).
 
 ### 📱 Para el teléfono (Android)

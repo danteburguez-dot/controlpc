@@ -59,7 +59,7 @@ ESTATICO = BASE / "estatico"
 ARCHIVO_CONFIG = BASE / "config.json"
 
 PUERTO_DEF = 8566
-VERSION_APP = "1.0"
+VERSION_APP = "1.2"
 REPO_PUBLICO = "https://api.github.com/repos/danteburguez-dot/controlpc/releases/latest"
 # nivel -> (ancho máximo, calidad JPEG)
 CALIDADES = {0: (960, 45), 1: (1280, 55), 2: (1600, 68), 3: (1920, 78)}
@@ -1053,6 +1053,25 @@ def manejar_entrada(e: dict):
 
 app = FastAPI(title="Control PC", docs_url=None, redoc_url=None)
 
+@app.get("/conectar")
+async def conectar_rapido(req: Request):
+    """Enlace del QR RÁPIDO: trae la clave incluida (?c=...). Si coincide,
+    crea la sesión y manda al teléfono directo a la app (sin escribir nada)."""
+    c = req.query_params.get("c", "")
+    try:
+        coincide = bool(c) and hmac.compare_digest(c, str(CFG.get("contrasena", "")))
+    except Exception:
+        coincide = False
+    if coincide:
+        podar_sesiones()
+        token = secrets.token_urlsafe(24)
+        SESIONES[token] = time.time() + 90 * 24 * 3600
+        _guardar_sesiones()
+        resp = RedirectResponse(url="/app/", status_code=307)
+        resp.set_cookie("sesion", token, max_age=90 * 24 * 3600, samesite="lax", httponly=True)
+        return resp
+    return RedirectResponse(url="/app/", status_code=307)
+
 @app.get("/")
 def raiz():
     return RedirectResponse(url="/app/", status_code=307)
@@ -1439,6 +1458,46 @@ def _crear_iconos() -> None:
                texto, font=fuente, fill=(255, 255, 255))
         img.save(ruta, "PNG")
 
+def _imprimir_qr(texto: str) -> None:
+    """Imprime un QR en la consola; si falla, al menos el enlace plano."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    try:
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(texto)
+        qr.make()
+        qr.print_ascii(invert=True)
+    except Exception:
+        print(f"   {texto}")
+
+def _banner_login() -> None:
+    """Banner del login.bat: clave actual + los dos QR de conexión."""
+    ip = ip_principal()
+    puerto = int(CFG.get("puerto", PUERTO_DEF))
+    url_app = f"http://{ip}:{puerto}/app/"
+    clave = str(CFG.get("contrasena", ""))
+    url_rapida = f"http://{ip}:{puerto}/conectar?c={clave}"
+    dias = max(0, 90 - int((time.time() - float(CFG.get("creada", 0) or 0)) / 86400))
+    print("=" * 50)
+    print("        LOGIN de Control PC".center(50))
+    print("=" * 50)
+    print(f"  Contraseña actual:   {clave}")
+    if dias:
+        print(f"  Ciclo restante:       {dias} días")
+    print("-" * 50)
+    print("  [1] RÁPIDA — escanea y entra SIN escribir la clave:")
+    print(f"      {url_rapida}")
+    _imprimir_qr(url_rapida)
+    print("  [2] NORMAL — escanea y el teléfono pedirá la clave:")
+    _imprimir_qr(url_app)
+    print("=" * 50)
+    print("   Connexión manual en el teléfono (sin QR):")
+    print(f"   dirección: {url_app}")
+    print(f"   contraseña: {clave}")
+    print("=" * 50)
+
 def _banner() -> None:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -1455,16 +1514,13 @@ def _banner() -> None:
     print(f"  Abre en el teléfono:   {url}")
     print(f"  Contraseña:            {CFG.get('contrasena', '????')}")
     print("-" * ancho_terminal)
-    try:
-        qr = qrcode.QRCode(border=1)
-        qr.add_data(url)
-        qr.make()
-        qr.print_ascii(invert=True)
-    except Exception:
-        pass
+    print("  [1] RÁPIDA — QR que conecta SIN escribir la clave:")
+    _imprimir_qr(f"http://{ip}:{puerto}/conectar?c={CFG.get('contrasena', '')}")
+    print("  [2] NORMAL — QR que pide la clave en el teléfono:")
+    _imprimir_qr(url)
+    print("  Forzar escritura? usa la clave listada arriba.")
     print("  (Ctrl+C aquí para apagar el servidor)")
     print("=" * ancho_terminal)
-
 # Montaje de archivos estáticos al final
 ESTATICO.mkdir(exist_ok=True)
 app.mount("/app", StaticFiles(directory=ESTATICO, html=True), name="app")
@@ -1472,6 +1528,14 @@ app.mount("/app", StaticFiles(directory=ESTATICO, html=True), name="app")
 # ----------------------------------------------------------- arranque directo ---
 
 if __name__ == "__main__":
+    # modos de mantenimiento (antes de nada): --loginqr y --rotar
+    if "--loginqr" in sys.argv:
+        _banner_login()
+        sys.exit(0)
+    if "--rotar" in sys.argv:
+        _rotar_contrasena_si_corresponde(ventana=True, forzar=True)
+        print("Clave nueva guardada en config.json. Conecta el teléfono con ella.")
+        sys.exit(0)
     modo_prueba = "--prueba" in sys.argv
     _crear_iconos()
 
