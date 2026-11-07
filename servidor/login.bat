@@ -12,7 +12,7 @@ if errorlevel 1 (
 
 :inicio
 cls
-REM Muestra: contraseña actual + dias restantes + QR RAPIDO (entra sin escribir)
+REM Muestra: contrasena actual + dias restantes + QR RAPIDO (entra sin escribir)
 REM y QR NORMAL (pide la clave). Cambia con la clave porque la incluye.
 python servidor.py --loginqr
 
