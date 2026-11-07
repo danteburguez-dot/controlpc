@@ -427,6 +427,13 @@ def _bucle_audio() -> None:
         AUDIO["error"] = f"no hay libreria de audio: {e}"
         return
     try:
+        if os.name == "nt":
+            # soundcard usa COM por debajo: sin inicializarlo explota con 0x800401f0
+            import pythoncom
+            pythoncom.CoInitialize()
+    except Exception:
+        pass
+    try:
         salida = sc.default_speaker()
         micro = sc.get_microphone(id=str(salida.id), include_loopback=True)
         ultimo = None
@@ -598,9 +605,11 @@ def _bucle_estado() -> None:
     ram_flag = False
     discos_flag = set()
     cpu_racha = 0
+    primer_ciclo = True
     while True:
         try:
-            time.sleep(2.5)
+            if not primer_ciclo:
+                time.sleep(2.5)
             try:
                 _rotar_contrasena_si_corresponde(ventana=False)
             except Exception:
@@ -641,17 +650,18 @@ def _bucle_estado() -> None:
                 pass
 
             procesos = []
-            for proc in psutil.process_iter(["pid", "name"]):
-                try:
-                    procesos.append({
-                        "nombre": proc.info["name"] or "?",
-                        "cpu": proc.cpu_percent(None),
-                    })
-                except Exception:
-                    pass
-            procesos = [p for p in procesos if p["cpu"] and p["cpu"] > 0.1]
-            procesos.sort(key=lambda p: p["cpu"], reverse=True)
-            procesos = procesos[:6]
+            if not primer_ciclo:   # el conteo de procesos es pesado: llenalo desde el segundo ciclo
+                for proc in psutil.process_iter(["pid", "name"]):
+                    try:
+                        procesos.append({
+                            "nombre": proc.info["name"] or "?",
+                            "cpu": proc.cpu_percent(None),
+                        })
+                    except Exception:
+                        pass
+                procesos = [p for p in procesos if p["cpu"] and p["cpu"] > 0.1]
+                procesos.sort(key=lambda p: p["cpu"], reverse=True)
+                procesos = procesos[:6]
 
             # ------------------- avisos automáticos -------------------
             if bateria is not None:
@@ -725,6 +735,7 @@ def _bucle_estado() -> None:
                 "procesos": procesos,
                 "version": VERSION_APP,
             }
+            primer_ciclo = False
         except Exception:
             time.sleep(1)
 

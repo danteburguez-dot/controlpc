@@ -9,3 +9,4 @@ numpy
 soundcard
 pycaw
 comtypes
+pywin32
