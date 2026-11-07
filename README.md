@@ -15,6 +15,7 @@
 
 | Archivo | Qué hace | ¿Doble clic? |
 |---|---|---|
+| **`1-permitir_telefono.bat`** | 🔥 **CORRELO PRIMERO**: agrega la **regla del Firewall** para que el teléfono pueda entrar (sin esto, la APK dirá "No se pudo conectar") | ✅ una sola vez, acepta el permiso |
 | `iniciar.bat` | **abre el servidor** (lo común) | ✅ primera vez instala librerías y muestra IP + contraseña + QR |
 | `iniciar_admin.bat` | lo mismo pero como ADMINISTRADOR (permite 🚫 rechazar UAC desde el teléfono) | opcional |
 | `login.bat` | muestra la contraseña actual + **2 QR**: uno que conecta el teléfono sin escribir nada (la clave va dentro del QR) y otro normal — con **Y** renueva la clave y el QR | cuando quieras |
@@ -26,6 +27,18 @@
 > QR para conectar el teléfono a un toque: el QR rápido lleva la clave dentro y
 > cambia solo cuando la clave cambia).
 > Windows te pedirá "Permitir acceso" la primera vez: acepta (con *redes privadas*).
+
+## 🔥 El clásico primer tropiezo — el Firewall
+
+Windows **bloquea** las conexiones entrantes por defecto. Si la APK te dice
+*"No se pudo conectar: ... el Firewall de la PC tenga la regla Control PC"*:
+
+1. Doble clic en **`1-permitir_telefono.bat`**.
+2. Acepta la ventana amarilla de Windows (botón **Sí**).
+3. Saldrá *"REGLA CREADA"* — ahora el teléfono entra sin problema.
+
+(Solo una vez por PC. Los `.bat` `iniciar_admin.bat` / `1-permitir_telefono.bat`
+hacen esto solo; **esta es la razón número 1** por la que "no conecta" aún.)
 
 ## 🦇 Guía completa de los 5 archivos `.bat`
 
@@ -43,11 +56,15 @@
 
 ### 3️⃣ `login.bat` — 🔑 "Control PC - Login (contrasena)"
 - Pantalla de LOGIN: muestra la contraseña actual, el ciclo restante, y los
-  2 QR de conexión (rápido/normal — siguen la clave actual).
+  **2 QR de conexión por cada red disponible** (Wi-Fi, hotspot de la PC, VPN,
+  Tailscale...). El QR **RÁPIDO lleva la clave dentro**: escanéalo con la cámara
+  y el teléfono entra sin escribir nada (ideal para tus equipos). El QR
+  **NORMAL** pide la contraseña (ideal para otras personas viendo tu pantalla).
 - Aquí abajo pregunta: `Quiere obtener una nueva contrasena? Y/N`
 - **Y** → renueva la clave, corta TODAS las sesiones y re-muestra la nueva
-  con su QR nuevo.
+  con su QR nuevo (los QR cambian solos: llevan la clave dentro).
 - **N** → no toca nada.
+- El banner al arrancar el servidor muestra la misma lista multi-red.
 
 ### 4️⃣ `autoinicio.bat` — 📌 "Control PC - Autoarranque simple"
 - Crea acceso directo en el Inicio de Windows para que el servidor se abra
@@ -74,24 +91,33 @@
 
 | Opción | Cómo |
 |---|---|
-| **APK instalable (recomendada)** | En este repositorio entra a 🏷️ **Releases** → descarga **`app-release.apk`** → instálala (si Android pregunta, marca *"Permitir de esta fuente"*) |
+| **APK instalable (recomendada)** | En este repositorio entra a 🏷️ **Releases** → descarga **`app-release.apk`** (de la versión más alta: v1.4.0) → instálala (si Android pregunta, marca *"Permitir de esta fuente"*) |
 | **App web (sin instalar)** | Abre en Chrome: `http://<IP-de-tu-PC>:8566/app/` y usa "Añadir a pantalla de inicio" |
 
 > En la APK escribe la IP de tu PC y la contraseña que muestra su consola. Listo.
+>
+> 💡 **La APK es amable**: el campo **Dirección IP acepta lo que pegues**
+> (`http://192.168.100.27:8566/app/`, `ip:puerto` o solo la IP — se limpia solo),
+> la contraseña tiene un **ojo 👁 para ver lo que escribiste**, y los errores
+> avisan diferente si falló la **clave** (campo rojo) que la **conexión**
+> (que te recuerda el `.bat` del Firewall).
 
 ### 🧾 Archivos que verás en el ZIP (referencia rápida)
 
 ```
 ControlPC/
 ├── servidor/
-│   ├── iniciar.bat            ← PC: doble clic aquí
-│   ├── iniciar_admin.bat      ← PC: versión administrador
-│   ├── login.bat              ← PC: ver/renovar contraseña (Y/N)
-│   ├── autoinicio_todos.bat   ← PC: autoarranque completo
-│   ├── servidor.py            ← motor del servidor
-│   └── estatico/              ← interfaz web del teléfono
-├── apk-flutter/               ← código de la APK (solo si quieres recompilar)
-└── .github/workflows/apk.yml  ← GitHub compila la APK gratis
+│   ├── 1-permitir_telefono.bat ← 🔥 PC: correlo PRIMERO (permite el teléfono en el Firewall)
+│   ├── iniciar.bat             ← PC: doble clic aquí
+│   ├── iniciar_admin.bat       ← PC: versión administrador
+│   ├── login.bat               ← PC: ver/renovar contraseña (Y/N) + QRs por red
+│   ├── activar_tailscale.bat   ← PC: acceso desde cualquier lugar del mundo
+│   ├── autoinicio_todos.bat    ← PC: autoarranque completo
+│   ├── servidor.py             ← motor del servidor
+│   └── estatico/               ← interfaz web del teléfono
+├── pruebas_apk.py              ← 20 pruebas automáticas (20/20 = todo sano)
+├── apk-flutter/                ← código de la APK (solo si quieres recompilar)
+└── .github/workflows/apk.yml   ← GitHub compila la APK gratis
 ```
 
 ## 🚀 Inicio rápido (3 pasos)
@@ -235,21 +261,37 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
 ## 🧩 Requisitos
 
 - PC: **Windows 10/11**, Python 3.10+ — librerías: `fastapi`, `uvicorn`, `mss`, `Pillow`,
-  `psutil`, `pyautogui`, `qrcode` (`requisitos.txt`, se instalan solas con el .bat).
+  `psutil`, `pyautogui`, `qrcode`, `numpy`, `soundcard`, `pycaw`, `comtypes`, `pywin32`
+  (`requisitos.txt`, se instalan solas con el .bat).
 - Teléfono: navegador moderno (Chrome/Edge/Brave). Toque y vibración opcionales.
 - APK: Android 8+.
+
+## 🧪 ¿Quieres verificar tu instalación? — 20 pruebas automáticas
+
+En la raíz del proyecto vive `pruebas_apk.py`: simula una APK Android de punta
+a punta contra tu servidor y valida además el archivo `.apk` descargado
+(zip intacto, firma Android v2, plugin de audio dentro). Con el servidor
+abierto corre:
+
+```
+python pruebas_apk.py
+```
+
+ dovrebbe decir **20/20 TODO VERDE**. Es también el diagnóstico recomendado
+si algo falla después de actualizar (te dice exactamente qué pieza falló).
 
 ## 🛠️ Solución de problemas
 
 | Problema | Solución |
 |---|---|
-| El teléfono no conecta | Verifica misma red (o hotspot) y la IP exacta que imprime la consola. |
-| Firewall bloquea | Permite "redes privadas" en la ventana de Windows, o abre el puerto elegido (8566) en el Firewall. |
+| El teléfono no conecta | **Causa nº 1: el Firewall** → corre `1-permitir_telefono.bat` (una vez, acepta el permiso). Luego: misma red (o hotspot), y la IP exacta que imprime la consola. |
+| Firewall bloquea | `1-permitir_telefono.bat` lo agrega por ti (con nombre "Control PC", puerto 8566). |
 | Video lento | Baja calidad/frames en ⚙️ Ajustes; usa 5 GHz, o Tailscale. |
 | Cursor invisible | Ya no pasa: la flecha se dibuja en el video. Actualiza la página. |
 | Instalar "app" en Chrome sin HTTPS | Chrome solo ofrece *Añadir a pantalla de inicio* (que funciona); la APK nativa es la experiencia instalada. |
-| Pantalla negra en UAC/Bloqueo | Windows protege esas pantallas; ningún software normal puede verlas. Desbloquea físicamente y vuelve a tomar control. C:*Ctrl+Alt+Supr* sí llega al usuario de la sesión. |
-| Arranque automático al encender la PC | Ejecuta `servidor\autoinicio.bat` una vez (crea acceso directo en shell:startup). |
+| Pantalla negra en UAC/Bloqueo | Windows protege esas pantallas; ningún software normal puede verlas. Desbloquea físicamente y vuelve a tomar control. Ctrl+Alt+Supr sí llega al usuario de la sesión. |
+| Arranque automático al encender la PC | Ejecuta `servidor\autoinicio_todos.bat` una vez (tarea administrador + respaldo). Renovación de contraseña/ciclo: `login.bat`. |
+| La APK dice "clave incorrecta" | Usa el ojo 👁 para ver lo que escribiste; la vigente la imprime el servidor o `login.bat`. |
 
 ## 🗂️ Estructura
 
