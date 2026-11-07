@@ -75,6 +75,7 @@ def cargar_config() -> dict:
     base = {
         "puerto": PUERTO_DEF,
         "contrasena": "",
+        "creada": 0,
         "pantalla": 1,
         "ancho_maximo": 1280,
         "fps": 24,
@@ -93,6 +94,10 @@ def cargar_config() -> dict:
         base["contrasena"] = "".join(
             secrets.choice(alfabeto) for _ in range(8)
         )
+        base["creada"] = time.time()
+        guardar_config(base)
+    if not float(base.get("creada", 0) or 0):
+        base["creada"] = time.time()
         guardar_config(base)
     return base
 
@@ -211,6 +216,60 @@ def _avisar_actualizacion() -> None:
             webbrowser.open(aviso["url"])
     except Exception:
         pass
+
+# ------------------------------------------------------- rotación de clave ---
+
+def _rotar_contrasena_si_corresponde(ventana: bool = False) -> None:
+    """Ciclo de seguridad: cada 90 días la contraseña se renueva y las sesiones
+    se borran. La nueva clave se muestra en la PC (consola y ventana) para que el
+    dueño la vuelva a poner en el teléfono."""
+    try:
+        creada = float(CFG.get("creada", 0) or 0)
+        if creada <= 0:
+            CFG["creada"] = time.time()
+            guardar_config(CFG)
+            return
+        días = (time.time() - creada) / 86400.0
+        if días < 90.0:
+            return
+        alfabeto = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+        nueva = "".join(secrets.choice(alfabeto) for _ in range(8))
+        CFG["contrasena"] = nueva
+        CFG["creada"] = time.time()
+        guardar_config(CFG)
+        SESIONES.clear()
+        podar_sesiones()
+        _guardar_sesiones()
+        try:
+            _agregar_aviso("advertencia",
+                "🔄 Por seguridad la contraseña se renovó (ciclo de 90 días). "
+                "Escribe en el teléfono la nueva que aparece en la PC")
+        except Exception:
+            pass
+        print()
+        print("=" * 50)
+        print(" 🔑 CONTRASEÑA RENOVADA (ciclo de 90 días)")
+        print(f"     Nueva contraseña: {nueva}")
+        print("     Vuelve a conectar el teléfono con esta clave.")
+        print("=" * 50)
+        print()
+        if ventana and os.name == "nt":
+            try:
+                ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "Por seguridad, Control PC renovó la contraseña hoy\n"
+                    "(ciclo de 90 días).\n\n"
+                    f"NUEVA CONTRASEÑA:  {nueva}\n\n"
+                    "Escríbela en el teléfono al volver a conectar.\n"
+                    "(La clave también queda en config.json y en la consola)",
+                    "Control PC — contraseña renovada",
+                    0x40)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+AVISO_BOX_ROTADO = [False]
 
 # ------------------------------------------------------------------- avisos ---
 
@@ -459,6 +518,10 @@ def _bucle_estado() -> None:
     while True:
         try:
             time.sleep(2.5)
+            try:
+                _rotar_contrasena_si_corresponde(ventana=True)
+            except Exception:
+                pass
             cpu = psutil.cpu_percent(interval=None)
             mem = psutil.virtual_memory()
             ahora = time.time()
@@ -967,6 +1030,7 @@ async def api_estado(req: Request):
     datos["seguridad"] = {"detectado": SEGURIDAD["detectado"]}
     datos["version"] = VERSION_APP
     datos["actualizacion"] = _hay_actualizacion()
+    datos["clave_dias"] = max(0, 90 - int((time.time() - float(CFG.get("creada", 0) or 0)) / 86400))
     return datos
 
 @app.get("/api/captura")
@@ -1322,6 +1386,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     import uvicorn
+    _rotar_contrasena_si_corresponde(ventana=True)
     _banner()
     _agregar_aviso("info", "Servidor Control PC listo ✓ conecta el teléfono desde el QR")
     threading.Thread(target=_avisar_actualizacion, daemon=True).start()

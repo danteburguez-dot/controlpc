@@ -479,7 +479,7 @@ class _PantallaVideoState extends State<PantallaVideo> {
   bool largo = false;
   Timer? temporizadorLargo;
   bool arrastreLibre = false;
-  Offset? posTocar;
+  ({double x, double y})? posTocar;
   // gesto 2 dedos
   double? gD0;
   double? gZ0;
@@ -972,7 +972,7 @@ class _PantallaAudioState extends State<PantallaAudio> {
   bool mudo = false;
   double nivel = 50;
   bool arrastrando = false;
-  int? sr;
+  List<int> buffer = [];
 
   Future<void> _aplicarVolumen(double? nuevo, bool? mudoPred) async {
     final cuerpo = <String, dynamic>{};
@@ -985,40 +985,49 @@ class _PantallaAudioState extends State<PantallaAudio> {
     if (nv != null && !arrastrando) setState(() => nivel = nv.toDouble());
   }
 
+  void _drenar() async {
+    if (buffer.isEmpty) return;
+    final cuantos = math.min(buffer.length, 4800); // ~100 ms a 48 kHz
+    final toma = buffer.sublist(0, cuantos);
+    buffer.removeRange(0, cuantos);
+    await FlutterPcmSound.feed(PcmArrayInt16.fromList(toma));
+  }
+
   Future<void> _escuchar() async {
     if (escuchando) {
       try {
         canalAudio?.sink.close();
-        await FlutterPcmSound.instance.release();
       } catch (_) {}
+      await _soltarReproduccion();
       setState(() {
         escuchando = false;
         canalAudio = null;
         estadoAudio = "apagado";
+        nota = "";
       });
       return;
     }
     try {
       final c = WebSocketChannel.connect(widget.conexion.urlWsAudio);
       canalAudio = c;
-      int? srLocal;
       late final StreamSubscription susc;
       susc = c.stream.listen(
         (mensaje) {
           if (mensaje is String) {
             try {
               final meta = jsonDecode(mensaje) as Map<String, dynamic>;
-              srLocal = (meta["sr"] as num?)?.toInt() ?? 48000;
-              if ((meta["error"] ?? "") != "") {
+              final error = (meta["error"] ?? "") as String;
+              if (error.isNotEmpty) {
                 setState(() {
-                  nota = "❌ ${meta["error"]}";
+                  nota = "❌ $error";
                   escuchando = false;
                   estadoAudio = "apagado";
                 });
                 susc.cancel();
                 return;
               }
-              _iniciarAudio(srLocal!);
+              final srLocal = (meta["sr"] as num?)?.toInt() ?? 48000;
+              if (!escuchando) _montarAudio(srLocal);
               if (mounted) {
                 setState(() {
                   escuchando = true;
@@ -1028,45 +1037,49 @@ class _PantallaAudioState extends State<PantallaAudio> {
               }
             } catch (_) {}
           } else if (mensaje is List<int> && escuchando) {
-            FlutterPcmSound.instance.feed(Uint8List.fromList(mensaje));
+            final bytes = Uint8List.fromList(mensaje.cast<int>());
+            final i16 = Int16List.view(bytes.buffer);
+            buffer.addAll(i16);
+            _drenar();
           }
         },
         onError: (_) => _pararAudio(),
-        onDone: () {
-          if (escuchando) {
-            setState(() {
-              escuchando = false;
-              estadoAudio = "conexión cerrada";
-            });
-            _liberarReproduccion();
-          }
-        },
+        onDone: () => _pararAudio(),
       );
     } catch (e) {
       setState(() => nota = "❌ $e");
     }
   }
 
-  Future<void> _iniciarAudio(int sampleRate) async {
+  Future<void> _montarAudio(int sampleRate) async {
     try {
-      await FlutterPcmSound.instance.setup(
-        sampleRate: sampleRate,
-        channels: 1,
-        format: FpcmFormat.int16,
-      );
-      await FlutterPcmSound.instance.start();
-    } catch (_) {}
+      await FlutterPcmSound.setup(sampleRate: sampleRate, channelCount: 1);
+      // colchón de ~100 ms: bajo retardo estable frente al Wi-Fi
+      await FlutterPcmSound.setFeedThreshold(sampleRate ~/ 10);
+      FlutterPcmSound.setFeedCallback((quedan) => _drenar());
+      FlutterPcmSound.start();
+    } catch (e) {
+      setState(() => nota = "❌ audio: $e");
+    }
   }
 
-  Future<void> _liberarReproduccion() async {
+  Future<void> _soltarReproduccion() async {
+    buffer.clear();
     try {
-      await FlutterPcmSound.instance.release();
+      FlutterPcmSound.setFeedCallback(null);
+      await FlutterPcmSound.release();
     } catch (_) {}
   }
 
   Future<void> _pararAudio() async {
     canalAudio = null;
-    await _liberarReproduccion();
+    await _soltarReproduccion();
+    if (mounted) {
+      setState(() {
+        if (escuchando) estadoAudio = "conexión cerrada";
+        escuchando = false;
+      });
+    }
   }
 
   @override
@@ -1074,7 +1087,7 @@ class _PantallaAudioState extends State<PantallaAudio> {
     try {
       canalAudio?.sink.close();
     } catch (_) {}
-    _liberarReproduccion();
+    _soltarReproduccion();
     super.dispose();
   }
 
