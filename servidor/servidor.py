@@ -1474,6 +1474,10 @@ def _imprimir_qr(texto: str) -> None:
 
 def _banner_login() -> None:
     """Banner del login.bat: clave actual + los dos QR de conexión."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ip = ip_principal()
     puerto = int(CFG.get("puerto", PUERTO_DEF))
     url_app = f"http://{ip}:{puerto}/app/"
@@ -1483,9 +1487,11 @@ def _banner_login() -> None:
     print("=" * 50)
     print("        LOGIN de Control PC".center(50))
     print("=" * 50)
-    print(f"  Contraseña actual:   {clave}")
+    print(f"  Direccion IP:    {ip}")
+    print(f"  Puerto:          {puerto}")
+    print(f"  Contraseña:      {clave}")
     if dias:
-        print(f"  Ciclo restante:       {dias} días")
+        print(f"  Ciclo restante:  {dias} días")
     print("-" * 50)
     print("  [1] RÁPIDA — escanea y entra SIN escribir la clave:")
     print(f"      {url_rapida}")
@@ -1493,9 +1499,8 @@ def _banner_login() -> None:
     print("  [2] NORMAL — escanea y el teléfono pedirá la clave:")
     _imprimir_qr(url_app)
     print("=" * 50)
-    print("   Connexión manual en el teléfono (sin QR):")
-    print(f"   dirección: {url_app}")
-    print(f"   contraseña: {clave}")
+    print("   Datos para escribir a mano en la APK del teléfono:")
+    print(f"   {ip} : {puerto}   con la clave {clave}")
     print("=" * 50)
 
 def _banner() -> None:
@@ -1512,6 +1517,8 @@ def _banner() -> None:
     print("=" * ancho_terminal)
     print(f"  Peligro de privacidad: solo comparte esto con tu teléfono.")
     print(f"  Abre en el teléfono:   {url}")
+    print(f"  Direccion IP:    {ip}")
+    print(f"  Puerto:          {puerto}")
     print(f"  Contraseña:            {CFG.get('contrasena', '????')}")
     print("-" * ancho_terminal)
     print("  [1] RÁPIDA — QR que conecta SIN escribir la clave:")
