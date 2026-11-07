@@ -72,7 +72,7 @@ jobs:
           # MUY IMPORTANTE: permite http en claro (el servidor de la casa es http://)
           for MAN in android/app/src/main/AndroidManifest.xml; do
             if [ -f "$MAN" ] && ! grep -q "usesCleartextTraffic" "$MAN"; then
-              sed -i 's/<application /<application android:usesCleartextTraffic="true" /' "$MAN"
+              sed -i '0,/<application/s//<application\n    android:usesCleartextTraffic="true"/' "$MAN"
             fi
           done
           # MUY IMPORTANTE: el permiso de INTERNET (la plantilla flutter no lo agrega en release)
