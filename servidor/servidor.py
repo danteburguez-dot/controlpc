@@ -59,6 +59,8 @@ ESTATICO = BASE / "estatico"
 ARCHIVO_CONFIG = BASE / "config.json"
 
 PUERTO_DEF = 8566
+VERSION_APP = "1.0"
+REPO_PUBLICO = "https://api.github.com/repos/danteburguez-dot/controlpc/releases/latest"
 # nivel -> (ancho máximo, calidad JPEG)
 CALIDADES = {0: (960, 45), 1: (1280, 55), 2: (1600, 68), 3: (1920, 78)}
 
@@ -138,6 +140,77 @@ def podar_sesiones() -> None:
     ahora = time.time()
     for t in [t for t, e in SESIONES.items() if e < ahora]:
         SESIONES.pop(t, None)
+
+# ---------------------------------------------------- actualizaciones ---
+
+REV_CACHE = {"t": 0.0, "res": None}
+
+def _version_tupla(v: str):
+    try:
+        t = tuple(int(x) for x in str(v).replace("v", "").strip().split("."))
+        while len(t) > 1 and t[-1] == 0:
+            t = t[:-1]
+        return t
+    except Exception:
+        return (0,)
+
+def _version_publicada(caducada: bool = False) -> dict:
+    """Consulta el último release de GitHub (con 6 h de enlatadura)."""
+    ahora = time.time()
+    if not caducada and REV_CACHE["res"] is not None and ahora - REV_CACHE["t"] < 21600:
+        return REV_CACHE["res"]
+    res = {}
+    try:
+        import urllib.request
+        peticion = urllib.request.Request(
+            REPO_PUBLICO, headers={"User-Agent": "ControlPC-actualizador"})
+        with urllib.request.urlopen(peticion, timeout=8) as r:
+            datos = json.loads(r.read().decode("utf-8"))
+        res = {
+            "nueva": str(datos.get("tag_name", "")).lstrip("v"),
+            "url": str(datos.get("html_url", "")),
+        }
+    except Exception as e:
+        res = {"nueva": None, "url": None, "error": str(e)[:120]}
+    REV_CACHE["t"] = ahora
+    REV_CACHE["res"] = res
+    return res
+
+def _hay_actualizacion() -> dict:
+    pub = _version_publicada()
+    if not pub or not pub.get("nueva"):
+        return {}
+    if _version_tupla(VERSION_APP) < _version_tupla(pub["nueva"]):
+        return {"nueva": pub["nueva"], "url": pub["url"]}
+    return {}
+
+aviso_box = [False]
+
+def _avisar_actualizacion() -> None:
+    aviso = _hay_actualizacion()
+    if not aviso:
+        return
+    _agregar_aviso("info",
+                   f"🏁 Nueva versión disponible: V {aviso['nueva']} (tu servidor tiene V {VERSION_APP})",
+                   clave="actualizacion", enfriamiento=21600)
+    print(f"[!] Hay una nueva versión: V {aviso['nueva']}. Página: {aviso['url']}")
+    if aviso_box[0]:
+        return
+    aviso_box[0] = True
+    try:
+        import webbrowser
+        ventana = ctypes.windll.user32.MessageBoxW(
+            0,
+            f"Hay una nueva versión de Control PC:\n\n"
+            f"  instada: V {VERSION_APP}\n"
+            f"  pública: V {aviso['nueva']}\n\n"
+            f"¿Abrir la página para descargar la nueva versión?",
+            "Control PC — actualización",
+            0x40 | 0x4)   # MDICON + YESNO
+        if ventana == 6:
+            webbrowser.open(aviso["url"])
+    except Exception:
+        pass
 
 # ------------------------------------------------------------------- avisos ---
 
@@ -504,6 +577,7 @@ def _bucle_estado() -> None:
                 "red_total_baja_gb": round(red.bytes_recv / 1e9, 1),
                 "encendido_s": int(ahora - psutil.boot_time()),
                 "procesos": procesos,
+                "version": VERSION_APP,
             }
         except Exception:
             time.sleep(1)
@@ -624,6 +698,7 @@ def _superponer_cursor(imagen: Image.Image, region: dict) -> None:
 # ----------------------------------------------------------------- captura ---
 
 RECTA = [None]   # (izquierda, arriba, ancho, alto) de la zona capturada
+metaData = [None]  # dict {"t":"dim","w","h"} pendiente de avisar al cliente
 
 def _capturar(sct) -> tuple:
     indice = int(CFG.get("pantalla", 1) or 1)
@@ -653,17 +728,21 @@ def _capturar(sct) -> tuple:
     pago = io.BytesIO()
     # sin optimize=True: la codificación rápida reduce la latencia de cada fotograma
     imagen.save(pago, "JPEG", quality=calidad, subsampling=1)
-    return pago.getvalue(), (region["left"], region["top"], region["width"], region["height"])
+    return pago.getvalue(), (region["left"], region["top"], region["width"], region["height"]), (imagen.width, imagen.height)
 
 def _bucle_captura(cola: Queue, detener: threading.Event) -> None:
     """Hilo por cliente: captura la pantalla y mete JPEGs en la cola."""
+    ultimo_dims = None
     try:
         with mss.MSS() as sct:
             while not detener.is_set():
                 inicio = time.perf_counter()
                 try:
-                    datos, recta = _capturar(sct)
+                    datos, recta, dims = _capturar(sct)
                     RECTA[0] = recta
+                    if metaData[0] is None and (ultimo_dims is None or dims != ultimo_dims):
+                        metaData[0] = {"t": "dim", "w": dims[0], "h": dims[1]}
+                    ultimo_dims = dims
                 except Exception:
                     time.sleep(0.4)
                     continue
@@ -886,6 +965,8 @@ async def api_estado(req: Request):
     datos["uac"] = _leer_uac()
     datos["privilegio"] = _estado_privilegio()
     datos["seguridad"] = {"detectado": SEGURIDAD["detectado"]}
+    datos["version"] = VERSION_APP
+    datos["actualizacion"] = _hay_actualizacion()
     return datos
 
 @app.get("/api/captura")
@@ -894,7 +975,7 @@ async def api_captura(req: Request):
     if not token_valido(token):
         return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
     with mss.MSS() as sct:
-        datos, _ = _capturar(sct)
+        datos, _recta, _dims = _capturar(sct)
     return Response(
         datos,
         media_type="image/jpeg",
@@ -992,6 +1073,22 @@ async def api_aviso(req: Request):
     _agregar_aviso("info", texto)
     return {"ok": True}
 
+@app.post("/api/entrada")
+async def api_entrada(req: Request):
+    """Ejecuta cualquier evento del protocolo (teclas, texto, mover, clic…) por HTTP,
+    sin necesidad de la conexión de video abierta."""
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    try:
+        datos = await req.json()
+    except Exception:
+        datos = {}
+    if not isinstance(datos, dict) or not datos:
+        return {"ok": False, "error": "evento-vacio"}
+    manejar_entrada(datos)
+    return {"ok": True}
+
 @app.websocket("/ws-audio")
 async def ws_audio(ws: WebSocket):
     token = ws.cookies.get("sesion", "") or ws.query_params.get("sesion", "")
@@ -1081,6 +1178,15 @@ async def ws_pantalla(ws: WebSocket):
 
     async def _enviar_fotogramas():
         while not detener.is_set():
+            # manda primero el aviso de dimensiones si hay uno pendiente
+            meta = metaData[0]
+            if meta is not None:
+                try:
+                    async with candado:
+                        await ws.send_text(json.dumps(meta))
+                    metaData[0] = None
+                except Exception:
+                    break
             try:
                 dato = cola.get_nowait()
             except Empty:
@@ -1206,7 +1312,7 @@ if __name__ == "__main__":
         with mss.MSS() as sct:
             for i, region in enumerate(sct.monitors):
                 print(f"  Pantalla {i}: {region['width']}x{region['height']} en ({region['left']},{region['top']})")
-            datos, recta = _capturar(sct)
+            datos, recta, dims = _capturar(sct)
             print(f"  Fotograma JPEG: {len(datos) / 1024:.0f} KB  OK")
         print(f"  Resolución usada por el raton: {pyautogui.size()}")
         print(f"  CPU {psutil.cpu_percent(interval=0.5):.0f}%  RAM {psutil.virtual_memory().percent:.0f}%")
@@ -1218,6 +1324,7 @@ if __name__ == "__main__":
     import uvicorn
     _banner()
     _agregar_aviso("info", "Servidor Control PC listo ✓ conecta el teléfono desde el QR")
+    threading.Thread(target=_avisar_actualizacion, daemon=True).start()
     cert = BASE / "cert.pem"
     clave = BASE / "clave.pem"
     if cert.exists() and clave.exists():

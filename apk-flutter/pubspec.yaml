@@ -1,7 +1,7 @@
 name: controlpc
-description: Control PC — controla tu computadora desde el teléfono (pantalla en vivo, ratón, teclado y estado del sistema).
+description: Control PC — controla tu computadora desde el teléfono (pantalla en vivo, ratón, teclado, avisos, volumen y sonido en vivo).
 publish_to: "none"
-version: 1.0.0+1
+version: 1.2.0+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -12,6 +12,8 @@ dependencies:
   web_socket_channel: ^3.0.0
   http: ^1.2.0
   shared_preferences: ^2.3.0
+  flutter_pcm_sound: ^3.3.3
+  url_launcher: ^6.2.0
 
 dev_dependencies:
   flutter_lints: ^4.0.0

@@ -24,9 +24,17 @@ permissions:
 jobs:
   compilar:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VER }}
     steps:
       - name: Descargar el proyecto
         uses: actions/checkout@v4
+
+      - name: Leer versión (de pubspec.yaml)
+        id: version
+        run: |
+          VER=$(grep '^version:' apk-flutter/pubspec.yaml | sed 's/version: //; s/+.*//')
+          echo "VER=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Instalar Flutter
         uses: subosito/flutter-action@v2
@@ -52,7 +60,7 @@ jobs:
 
   publicar:
     needs: compilar
-    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' && github.event.inputs.crear_release == 'true' }}
+    if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.crear_release == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - name: Descargar artefacto
@@ -64,9 +72,12 @@ jobs:
       - name: Publicar en Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Control PC — versión ${{ github.run_number }}
+          tag_name: v${{ needs.compilar.outputs.version }}
+          name: Control PC — versión ${{ needs.compilar.outputs.version }}
           body: |
-            APK nativa de Control PC (Android 8+).
-            Instálala en el teléfono y conéctala al servidor que corre en tu PC (ver README).
+            APK nativa de Control PC (Android).
+
+            Instálala en el teléfono y conéctala al servidor de tu PC.
+            Los usuarios con versiones anteriores verán una notificación
+            de actualización al abrir su servidor.
           files: apk/app-release.apk

@@ -1,18 +1,25 @@
-// Control PC — APK nativo (Flutter)
-// Nos conecta al servidor de la PC: pantalla en vivo, ratón táctil, teclado y estado.
-// Requiere ejecutar "flutter create ." en esta carpeta una sola vez (ver README-APK.md).
+// Control PC — APK nativa (Flutter) V 1.2
+// Pantalla en vivo con gestos, estado con avisos ✅/🚫, volumen + sonido en
+// vivo de la PC, teclado/atajos y aviso de nueva versión con descarga.
+// Genera la estructura de Android con "flutter create ." (ver README-APK.md).
 
 import "dart:async";
 import "dart:convert";
 import "dart:math" as math;
+import "dart:typed_data";
 
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
+import "package:flutter_pcm_sound/flutter_pcm_sound.dart";
 import "package:http/http.dart" as http;
 import "package:shared_preferences/shared_preferences.dart";
+import "package:url_launcher/url_launcher.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
+const String VERSION_APP = "1.2";
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
   runApp(const ControlPCApp());
 }
@@ -20,62 +27,44 @@ void main() {
 // ------------------------------------------------------------------ base ---
 
 class Conexion {
-  String host; // ejemplo: 192.168.1.50 o 100.x.y.z (IP de Tailscale)
-  int puerto;
-  String token;
+  final String host;
+  final int puerto;
+  final String token;
 
   Conexion({required this.host, required this.puerto, required this.token});
 
   String get base => "http://$host:$puerto";
-  String get urlWs => "ws://$host:$puerto/ws?sesion=$token";
+  Uri get urlWsVideo => Uri.parse("ws://$host:$puerto/ws?sesion=$token");
+  Uri get urlWsAudio => Uri.parse("ws://$host:$puerto/ws-audio?sesion=$token");
 
   static const clavePrefs = "conexion_guardada";
 }
 
-class DatosEstado {
-  final double cpu, ram;
-  final String host, os;
-  final int encendidoS, puerto;
-  final List<Map<String, Object?>> procesos;
-  final String detalle;
-
-  DatosEstado({
-    required this.cpu,
-    required this.ram,
-    required this.host,
-    required this.os,
-    required this.encendidoS,
-    required this.procesos,
-    required this.detalle,
-    required this.puerto,
-  });
-
-  static DatosEstado desdeJson(Map<String, dynamic> j) {
-    final procs = (j["procesos"] as List? ?? [])
-        .map<Map<String, Object?>>((p) => {"nombre": p["nombre"], "cpu": p["cpu"]})
-        .toList();
-    final bat = j["bateria"];
-    final discs = (j["discos"] as List? ?? [])
-        .map((d) => "Disco ${d["montaje"]}: ${d["pct"]}% usado")
-        .join("\n");
-    return DatosEstado(
-      cpu: (j["cpu"] ?? 0) * 1.0,
-      ram: (j["ram_pct"] ?? 0) * 1.0,
-      host: j["host"] ?? "-",
-      os: j["os"] ?? "-",
-      encendidoS: j["encendido_s"] ?? 0,
-      procesos: procs,
-      puerto: j["puerto"] ?? 8566,
-      detalle:
-          "RAM ${j["ram_usada_gb"]} GB de ${j["ram_total_gb"]} GB\n${_bateriaLinea(bat)}\n$discs\n"
-          "Red ↓${j["red_baja_kbps"]} kB/s ↑${j["red_sube_kbps"]} kB/s\nEncendido: ${(j["encendido_s"] ?? 0) ~/ 3600} h ${((j["encendido_s"] ?? 0) % 3600) ~/ 60} min",
-    );
+Future<Map<String, dynamic>?> apiGet(Conexion c, String ruta) async {
+  try {
+    final r = await http.get(
+      Uri.parse("${c.base}$ruta"),
+      headers: {"Cookie": "sesion=${c.token}"},
+    ).timeout(const Duration(seconds: 6));
+    if (r.statusCode != 200) return null;
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  } catch (_) {
+    return null;
   }
 }
 
-String _bateriaLinea(dynamic bat) {
-  if (bat == null) return "Batería: no disponible";
-  return "Batería: ${bat["pct"]}% ${bat["enchufado"] ? "(cargando ⚡)" : ""}";
+Future<Map<String, dynamic>?> apiPost(Conexion c, String ruta, Map<String, dynamic> cuerpo) async {
+  try {
+    final r = await http.post(
+      Uri.parse("${c.base}$ruta"),
+      headers: {"Cookie": "sesion=${c.token}", "Content-Type": "application/json"},
+      body: jsonEncode(cuerpo),
+    ).timeout(const Duration(seconds: 8));
+    if (r.statusCode >= 400) return null;
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  } catch (_) {
+    return null;
+  }
 }
 
 // ------------------------------------------------------------------- app ---
@@ -112,11 +101,6 @@ class _ControlPCAppState extends State<ControlPCApp> {
     if (mounted) setState(() => cargando = false);
   }
 
-  Future<void> _guardar(Conexion c) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(Conexion.clavePrefs, "${c.host}|${c.puerto}|${c.token}");
-  }
-
   Future<bool> _entrar(String host, int puerto, String clave) async {
     try {
       final r = await http
@@ -130,32 +114,42 @@ class _ControlPCAppState extends State<ControlPCApp> {
       final token = jsonDecode(r.body)["token"] as String;
       final c = Conexion(host: host, puerto: puerto, token: token);
       setState(() => con = c);
-      await _guardar(c);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(Conexion.clavePrefs, "${c.host}|${c.puerto}|${c.token}");
       return true;
     } catch (_) {
       return false;
     }
   }
 
+  Future<void> _salir() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(Conexion.clavePrefs);
+    setState(() => con = null);
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (cargando) return const MaterialApp(home: Scaffold(body: Center(child: CircularProgressIndicator())));
+    if (cargando) {
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    }
     final c = con;
     return MaterialApp(
       title: "Control PC",
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true).copyWith(
         scaffoldBackgroundColor: const Color(0xFF05070C),
-        colorScheme: ThemeData.dark(useMaterial3: true).colorScheme.copyWith(primary: const Color(0xFF4F83FF)),
+        colorScheme: ThemeData.dark(useMaterial3: true)
+            .colorScheme
+            .copyWith(primary: const Color(0xFF4F83FF)),
       ),
-      home: c == null ? PantallaAcceso(alEntrar: _entrar) : PantallaHome(conexion: c, alSalir: _salir),
+      home: c == null
+          ? PantallaAcceso(alEntrar: _entrar)
+          : PantallaHome(conexion: c, alSalir: _salir),
     );
-  }
-
-  Future<void> _salir() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(Conexion.clavePrefs);
-    setState(() => con = null);
   }
 }
 
@@ -184,14 +178,19 @@ class _PantallaAccesoState extends State<PantallaAcceso> {
   }
 
   Future<void> _entrar() async {
-    setState(() { ocupado = true; error = null; });
+    setState(() => ocupado = true);
     final ok = await widget.alEntrar(
       _host.text.trim(),
       int.tryParse(_puerto.text.trim()) ?? 8566,
       _clave.text.trim(),
     );
     if (!mounted) return;
-    if (!ok) setState(() { ocupado = false; error = "No se pudo conectar: revisa host, puerto y contraseña."; });
+    if (!ok) {
+      setState(() {
+        ocupado = false;
+        error = "No se pudo conectar: revisa IP, puerto y contraseña.";
+      });
+    }
   }
 
   @override
@@ -206,17 +205,54 @@ class _PantallaAccesoState extends State<PantallaAcceso> {
               const Icon(Icons.computer, size: 64, color: Color(0xFF4F83FF)),
               const SizedBox(height: 8),
               const Text("Control PC", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-              const Text("La IP y la contraseña aparecen en la ventana\n\"Control PC\" de tu computadora.",
-                  textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12.5)),
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text(
+                  "La IP y la contraseña aparecen en la ventana\n\"Control PC\" de tu computadora.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white54, fontSize: 12.5),
+                ),
+              ),
               const SizedBox(height: 24),
-              TextField(controller: _host, decoration: const InputDecoration(labelText: "Dirección IP", border: OutlineInputBorder(), filled: true)),
+              TextField(
+                controller: _host,
+                decoration: const InputDecoration(
+                  labelText: "Dirección IP",
+                  border: OutlineInputBorder(),
+                  filled: true,
+                ),
+              ),
               const SizedBox(height: 12),
-              TextField(controller: _puerto, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Puerto", border: OutlineInputBorder(), filled: true)),
+              TextField(
+                controller: _puerto,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: "Puerto",
+                  border: OutlineInputBorder(),
+                  filled: true,
+                ),
+              ),
               const SizedBox(height: 12),
-              TextField(controller: _clave, obscureText: true, decoration: const InputDecoration(labelText: "Contraseña", border: OutlineInputBorder(), filled: true)),
-              if (error != null) ...[const SizedBox(height: 12), Text(error!, style: const TextStyle(color: Color(0xFFF87171), fontSize: 13))],
+              TextField(
+                controller: _clave,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Contraseña",
+                  border: OutlineInputBorder(),
+                  filled: true,
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Text(error!, style: const TextStyle(color: Color(0xFFF87171), fontSize: 13)),
+              ],
               const SizedBox(height: 20),
-              FilledButton(onPressed: ocupado ? null : _entrar, child: ocupado ? const CircularProgressIndicator() : const Text("Conectar", style: TextStyle(fontSize: 16))),
+              FilledButton(
+                onPressed: ocupado ? null : _entrar,
+                child: ocupado
+                    ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text("Conectar", style: TextStyle(fontSize: 16)),
+              ),
             ],
           ),
         ),
@@ -236,31 +272,177 @@ class PantallaHome extends StatefulWidget {
 }
 
 class _PantallaHomeState extends State<PantallaHome> {
+  Map<String, dynamic>? datos;
+  Timer? reloj;
+  int ultimoAvisoId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _consultar();
+    reloj = Timer.periodic(const Duration(seconds: 3), (_) => _consultar());
+  }
+
+  @override
+  void dispose() {
+    reloj?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _consultar() async {
+    final d = await apiGet(widget.conexion, "/api/estado");
+    if (d == null || !mounted) return;
+    setState(() => datos = d);
+    _revisarAvisos(d);
+  }
+
+  Future<void> _revisarAvisos(Map<String, dynamic> d) async {
+    final lista = (d["avisos"] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    if (lista.isEmpty) return;
+    final maxId = lista.map((a) => (a["id"] as num?)?.toInt() ?? 0).reduce(math.max);
+    if (maxId <= ultimoAvisoId) return;
+    for (final a in lista) {
+      final id = (a["id"] as num?)?.toInt() ?? 0;
+      if (id <= ultimoAvisoId) continue;
+      final texto = a["texto"] as String? ?? "";
+      final nivel = a["nivel"] as String? ?? "info";
+      final esSeguridad = a["seguridad"] as bool? ?? false;
+      if (!mounted) continue;
+      if (esSeguridad) {
+        ScaffoldMessenger.of(context).showMaterialBanner(
+          MaterialBanner(
+            backgroundColor: const Color(0xFF3B1218),
+            content: SizedBox(
+              width: double.infinity,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(texto, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                Text(
+                  "elige una acción:",
+                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+                ),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => _accionSeguridad("permitir"),
+                child: const Text("✅ Permitir"),
+              ),
+              TextButton(
+                onPressed: () => _accionSeguridad("rechazar"),
+                child: const Text("🚫 Rechazar"),
+              ),
+              TextButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+                child: const Text("✕"),
+              ),
+            ],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: nivel == "advertencia" ? const Color(0xFF4B3A05) : const Color(0xFF12233B),
+          duration: const Duration(seconds: 4),
+          content: Text(texto, style: const TextStyle(fontSize: 13.5)),
+          action: SnackBarAction(label: "OK", onPressed: () {}),
+        ));
+      }
+      HapticFeedback.lightImpact();
+    }
+    ultimoAvisoId = maxId;
+  }
+
+  Future<void> _accionSeguridad(String accion) async {
+    ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+    final r = await apiPost(widget.conexion, "/api/seguridad-accion", {"accion": accion});
+    if (!mounted) return;
+    String msg;
+    if (r == null) {
+      msg = "No se pudo aplicar";
+    } else if (r["ok"] == true && accion == "rechazar") {
+      msg = "🚫 Ventana rechazada desde el teléfono";
+    } else if (r["ok"] == true) {
+      msg = "✅ " + ((r["mensaje"] as String?) ?? "Modo silencioso aplicado");
+    } else if (r["error"] == "requiere-admin") {
+      msg = "⚠️ Corre el servidor con iniciar_admin.bat para poder rechazar";
+    } else if (r["pendiente"] == true) {
+      msg = "📝 Autoriza la ventana de Windows en la PC para aplicar";
+    } else {
+      msg = "⚠️ " + ((r["error"] as String?) ?? "error desconocido");
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 4),
+      content: Text(msg, style: const TextStyle(fontSize: 13.5)),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Text("Control PC · ${widget.conexion.host}"),
           actions: [
+            if ((datos?["privilegio"] ?? "") == "administrador")
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(Icons.verified_user, color: Color(0xFF2DD4A7), size: 20),
+              ),
             IconButton(icon: const Icon(Icons.logout), onPressed: widget.alSalir),
           ],
           bottom: const TabBar(tabs: [
             Tab(icon: Icon(Icons.monitor), text: "Pantalla"),
             Tab(icon: Icon(Icons.query_stats), text: "Estado"),
+            Tab(icon: Icon(Icons.surround_sound), text: "Audio"),
             Tab(icon: Icon(Icons.keyboard_alt_outlined), text: "Teclado"),
           ]),
         ),
-        body: TabBarView(
-          children: [
-            PantallaVideo(conexion: widget.conexion),
-            PantallaEstado(conexion: widget.conexion),
-            PantallaTeclado(conexion: widget.conexion),
-          ],
-        ),
+        body: TabBarView(children: [
+          PantallaVideo(conexion: widget.conexion),
+          PantallaEstado(conexion: widget.conexion, datos: datos, uacBoton: _cambiaUac, prueba: _pruebaAviso),
+          PantallaAudio(conexion: widget.conexion, datos: datos),
+          PantallaTeclado(conexion: widget.conexion),
+        ]),
       ),
     );
+  }
+
+  Future<void> _cambiaUac(String modo) async {
+    if (modo == "silencioso") {
+      final seguir = await _confirmar(
+        "Windows dejará de preguntar los permisos de administración en la PC (menos seguro). ¿Seguro?");
+      if (seguir != true || !mounted) return;
+    }
+    final r = await apiPost(widget.conexion, "/api/uac", {"modo": modo});
+    if (!mounted) return;
+    if (r != null && r["pendiente"] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Windows abrirá una ventana EN TU PC: autorizala para aplicar.",
+            style: TextStyle(fontSize: 13.5)),
+      ));
+    }
+    _consultar();
+  }
+
+  Future<bool?> _confirmar(String texto) {
+    return showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Confirmar", style: TextStyle(fontSize: 18)),
+        content: Text(texto, style: const TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Cancelar")),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text("Seguir")),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pruebaAviso() async {
+    await apiPost(widget.conexion, "/api/aviso", {"texto": "🔔 ¡Aviso de prueba!"});
+    _consultar();
   }
 }
 
@@ -274,11 +456,35 @@ class PantallaVideo extends StatefulWidget {
 }
 
 class _PantallaVideoState extends State<PantallaVideo> {
+  static const ANCHO_CALIDAD = {0: 960, 1: 1280, 2: 1600, 3: 1920};
+  static const Q_CALIDAD = {0: 45, 1: 55, 2: 68, 3: 78};
+
   WebSocketChannel? canal;
-  Uint8List? ultimoFotograma;
+  Uint8List? fotograma;
+  int anchoImg = 1280, altoImg = 720;
   String estado = "Conectando…";
   Timer? reintento;
   double zoom = 1.0;
+  Offset desplaza = Offset.zero;
+  int nivelCalidad = 0;
+  int fps = 24;
+  int pantalla = 1;
+  bool completo = false;
+
+  // estado de gestos
+  final Map<int, Offset> puntas = {};
+  int? primario;
+  double acumulado = 0;
+  bool pulsado = false;
+  bool largo = false;
+  Timer? temporizadorLargo;
+  bool arrastreLibre = false;
+  Offset? posTocar;
+  // gesto 2 dedos
+  double? gD0;
+  double? gZ0;
+  Offset? gCentro;
+  String? gModo;
 
   @override
   void initState() {
@@ -286,25 +492,47 @@ class _PantallaVideoState extends State<PantallaVideo> {
     _conectar();
   }
 
+  @override
+  void dispose() {
+    reintento?.cancel();
+    temporizadorLargo?.cancel();
+    try {
+      canal?.sink.close();
+    } catch (_) {}
+    super.dispose();
+  }
+
   void _conectar() {
     try {
-      final c = WebSocketChannel.connect(Uri.parse(widget.conexion.urlWs));
+      final c = WebSocketChannel.connect(widget.conexion.urlWsVideo);
       canal = c;
       c.stream.listen(
         (mensaje) {
           if (mensaje is List<int>) {
-            if (mounted) setState(() => ultimoFotograma = Uint8List.fromList(mensaje));
+            if (mounted) setState(() => fotograma = Uint8List.fromList(mensaje));
           } else if (mensaje is String) {
-            if (mensaje.contains("sin-sesion")) {
-              if (mounted) setState(() => estado = "Sesión caducada. Reinicia la app.");
-            }
+            try {
+              final m = jsonDecode(mensaje) as Map<String, dynamic>;
+              if (m["t"] == "dim") {
+                if (mounted) {
+                  setState(() {
+                    anchoImg = (m["w"] as num?)?.toInt() ?? 1280;
+                    altoImg = (m["h"] as num?)?.toInt() ?? 720;
+                    zoom = 1;
+                    desplaza = Offset.zero;
+                  });
+                }
+              } else if (m["t"] == "error") {
+                if (mounted) setState(() => estado = "Sesión caducada: reinicia la app");
+              }
+            } catch (_) {}
           }
         },
         onError: (_) => _reintentar(),
         onDone: () => _reintentar(),
       );
-      // configuración inicial del video
-      c.sink.add(jsonEncode({"t": "cfg", "ancho_maximo": 1280, "calidad_jpeg": 55, "fps": 12, "pantalla": 1}));
+      _envia({"t": "cfg", "ancho_maximo": ANCHO_CALIDAD[nivelCalidad],
+        "calidad_jpeg": Q_CALIDAD[nivelCalidad], "fps": fps, "pantalla": pantalla});
     } catch (_) {
       _reintentar();
     }
@@ -314,79 +542,267 @@ class _PantallaVideoState extends State<PantallaVideo> {
     if (!mounted) return;
     setState(() => estado = "PC sin conexión. Reintentando…");
     reintento?.cancel();
-    reintento = Timer(const Duration(seconds: 3), () { if (mounted) _conectar(); });
+    try {
+      canal?.sink.close();
+    } catch (_) {}
+    canal = null;
+    reintento = Timer(const Duration(seconds: 3), () {
+      if (mounted) _conectar();
+    });
   }
 
-  @override
-  void dispose() {
-    reintento?.cancel();
-    canal?.sink.close();
-    super.dispose();
+  void _envia(Map<String, Object?> evento) {
+    try {
+      canal?.sink.add(jsonEncode(evento));
+    } catch (_) {}
   }
 
-  void _enviar(Map<String, Object?> evento) {
-    try { canal?.sink.add(jsonEncode(evento)); } catch (_) {}
+  void _cambiaCfg() {
+    _envia({
+      "t": "cfg",
+      "ancho_maximo": ANCHO_CALIDAD[nivelCalidad],
+      "calidad_jpeg": Q_CALIDAD[nivelCalidad],
+      "fps": fps,
+      "pantalla": pantalla,
+    });
   }
 
-  void _tocarPixel(Offset local, double boxAncho, double boxAlto) {
-    // coordenada normalizada respecto a la imagen mostrada
-    if (ultimoFotograma == null) return;
-    final nx = (local.dx / boxAncho).clamp(0.0, 1.0);
-    final ny = (local.dy / boxAlto).clamp(0.0, 1.0);
-    _enviar({"t": "mover", "x": nx, "y": ny});
+  // ---------- mapeo a coordenada de imagen ----------
+  ({double x, double y}) _aImagen(Offset local, Size tamano) {
+    final ar = anchoImg / math.max(1, altoImg);
+    double dibW = tamano.width, dibH = tamano.width / ar;
+    if (dibH > tamano.height) {
+      dibH = tamano.height;
+      dibW = dibH * ar;
+    }
+    final oy = (tamano.height - dibH) / 2;
+    final ox = (tamano.width - dibW) / 2;
+    final x = ((local.dx - ox) / dibW).clamp(0.0, 1.0);
+    final y = ((local.dy - oy) / dibH).clamp(0.0, 1.0);
+    return (x: x, y: y);
+  }
+
+  void _abajo(PointerDownEvent ev, Size tamano) {
+    puntas[ev.pointer] = ev.localPosition;
+    if (puntas.length == 1) {
+      primario = ev.pointer;
+      acumulado = 0;
+      pulsado = false;
+      largo = false;
+      arrastreLibre = false;
+      posTocar = _aImagen(ev.localPosition, tamano);
+      final p = _aImagen(ev.localPosition, tamano);
+      _envia({"t": "mover", "x": p.x, "y": p.y});
+      temporizadorLargo?.cancel();
+      temporizadorLargo = Timer(const Duration(milliseconds: 600), () {
+        if (puntas.length != 1) return;
+        largo = true;
+        pulsado = true;
+        HapticFeedback.mediumImpact();
+        final p2 = _aImagen(puntas[primario] ?? ev.localPosition, tamano);
+        _envia({"t": "pulsar", "x": p2.x, "y": p2.y, "b": "der"});
+      });
+    } else if (puntas.length == 2) {
+      temporizadorLargo?.cancel();
+      if (pulsado) {
+        _envia({"t": "soltar", "b": largo ? "der" : "izq"});
+        pulsado = false;
+      }
+      final valores = puntas.values.toList();
+      gD0 = (valores[0] - valores[1]).distance.abs().toDouble() + 1;
+      gZ0 = zoom;
+      gCentro = (valores[0] + valores[1]) / 2;
+      gModo = null;
+    } else {
+      temporizadorLargo?.cancel();
+      gModo = null;
+    }
+  }
+
+  void _sobreMover(PointerMoveEvent ev, Size tamano) {
+    if (!puntas.containsKey(ev.pointer)) return;
+    final dx = ev.localPosition.dx - puntas[ev.pointer]!.dx;
+    final dy = ev.localPosition.dy - puntas[ev.pointer]!.dy;
+    puntas[ev.pointer] = ev.localPosition;
+
+    if (puntas.length == 1 && ev.pointer == primario) {
+      acumulado += (dx.abs() + dy.abs());
+      if (acumulado > 18 && !pulsado && !largo) {
+        temporizadorLargo?.cancel();
+        if (zoom > 1) {
+          // con la vista con zoom: arrastrar desplaza la imagen
+          setState(() => desplaza = Offset(
+            desplaza.dx - dx / (zoom * 2),
+            desplaza.dy - dy / (zoom * 2),
+          ));
+          return;
+        }
+        if (arrastreLibre) {
+          // modo puntero libre
+        } else {
+          final p = posTocar ?? _aImagen(ev.localPosition, tamano);
+          _envia({"t": "pulsar", "x": p.x, "y": p.y, "b": "izq"});
+          pulsado = true;
+        }
+      }
+      final p = _aImagen(ev.localPosition, tamano);
+      _envia({"t": "mover", "x": p.x, "y": p.y});
+    } else if (puntas.length == 2 && gD0 != null) {
+      final valores = puntas.values.toList();
+      final d = (valores[0] - valores[1]).distance.abs().toDouble() + 1;
+      final centro = (valores[0] + valores[1]) / 2;
+      final pinch = (d - gD0!) / 2;
+      final dax = centro.dx - gCentro!.dx;
+      final day = centro.dy - gCentro!.dy;
+
+      gModo ??= () {
+        if (pinch.abs() > 14) return "pinz";
+        if (day.abs() > 12 && zoom <= 1.02) return "desliza";
+        if (dax.abs() > 12 && zoom > 1.02) return "pan";
+        return null;
+      }();
+
+      if (gModo == "pinz") {
+        setState(() => zoom = (gZ0! * (d / gD0!)).clamp(1.0, 8.0));
+      } else if (gModo == "pan") {
+        setState(() => desplaza = Offset(
+          desplaza.dx - dax / (zoom * 2),
+          desplaza.dy - day / (zoom * 2),
+        ));
+      } else if (gModo == "desliza") {
+        final paso = (day / 40).truncateToDouble();
+        if (paso.abs() >= 1) _envia({"t": "deslizar", "dy": paso * 40});
+      }
+      gD0 = d;
+      gZ0 = zoom;
+      gCentro = centro;
+    }
+  }
+
+  void _arriba(PointerUpEvent ev, Size tamano) {
+    if (!puntas.containsKey(ev.pointer)) return;
+    puntas.remove(ev.pointer);
+    if (puntas.length == 1) {
+      gModo = null;
+      acumulado = 0;
+      posTocar = null;
+      return;
+    }
+    if (puntas.isNotEmpty) return; // quedan 2
+    temporizadorLargo?.cancel();
+    if (gModo != null) {
+      gModo = null;
+      return;
+    }
+    if (pulsado) {
+      _envia({"t": "soltar", "b": largo ? "der" : "izq"});
+      pulsado = false;
+      largo = false;
+    } else if (posTocar != null && !arrastreLibre) {
+      _envia({"t": "clic", "x": posTocar!.x, "y": posTocar!.y, "b": "izq"});
+    }
+    posTocar = null;
+    arrastreLibre = false;
+  }
+
+  void _cancela(PointerCancelEvent ev, Size tamano) {
+    _arriba(PointerUpEvent(pointer: ev.pointer, position: ev.localPosition), tamano);
   }
 
   @override
   Widget build(BuildContext context) {
+    final botones = Row(children: [
+      _selector<int>(
+        valor: nivelCalidad,
+        opciones: {0: "Rápida", 1: "Media", 2: "Alta", 3: "Máxima"},
+        alElegir: (v) => setState(() { nivelCalidad = v; _cambiaCfg(); }),
+      ),
+      const SizedBox(width: 6),
+      _selector<int>(
+        valor: fps,
+        opciones: {8: "8 fps", 15: "15 fps", 24: "24 fps", 30: "30 fps"},
+        alElegir: (v) => setState(() { fps = v; _cambiaCfg(); }),
+      ),
+      const SizedBox(width: 6),
+      _selector<int>(
+        valor: pantalla,
+        opciones: {1: "Monitor 1", 2: "Monitor 2", 0: "Todas"},
+        alElegir: (v) => setState(() { pantalla = v; _cambiaCfg(); }),
+      ),
+      const SizedBox(width: 6),
+      IconButton(
+        icon: Icon(completo ? Icons.fullscreen_exit : Icons.fullscreen),
+        onPressed: () {
+          completo = !completo;
+          SystemChrome.setEnabledSystemUIMode(
+            completo ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+          );
+          setState(() {});
+        },
+      ),
+    ]);
     return Column(
       children: [
+        if (!completo) behavedControls(botones),
         Expanded(
-          child: ultimoFotograma == null
-              ? Center(child: Text(estado, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54)))
-              : LayoutBuilder(builder: (context, caja) {
-                  return GestureDetector(
+          child: fotograma == null
+              ? Center(child: Text(estado, textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white54)))
+              : LayoutBuilder(builder: (context, cajas) {
+                  final tamano = Size(cajas.maxWidth, cajas.maxHeight);
+                  final dibujar = Listener(
                     behavior: HitTestBehavior.opaque,
-                    onTapUp: (d) {
-                      final nx = (d.localPosition.dx / caja.maxWidth).clamp(0.0, 1.0);
-                      final ny = (d.localPosition.dy / caja.maxHeight).clamp(0.0, 1.0);
-                      _enviar({"t": "clic", "x": nx, "y": ny, "b": "izq"});
-                    },
-                    onLongPressStart: (d) {
-                      final nx = (d.localPosition.dx / caja.maxWidth).clamp(0.0, 1.0);
-                      final ny = (d.localPosition.dy / caja.maxHeight).clamp(0.0, 1.0);
-                      _enviar({"t": "mover", "x": nx, "y": ny});
-                      _enviar({"t": "pulsar", "x": nx, "y": ny, "b": "der"});
-                    },
-                    onLongPressEnd: (d) => _enviar({"t": "soltar", "b": "der"}),
-                    onPanStart: (d) {
-                      final nx = (d.localPosition.dx / caja.maxWidth).clamp(0.0, 1.0);
-                      final ny = (d.localPosition.dy / caja.maxHeight).clamp(0.0, 1.0);
-                      _enviar({"t": "pulsar", "x": nx, "y": ny, "b": "izq"});
-                    },
-                    onPanUpdate: (d) {
-                      final nx = (d.localPosition.dx / caja.maxWidth).clamp(0.0, 1.0);
-                      final ny = (d.localPosition.dy / caja.maxHeight).clamp(0.0, 1.0);
-                      _enviar({"t": "mover", "x": nx, "y": ny});
-                    },
-                    onPanEnd: (_) => _enviar({"t": "soltar", "b": "izq"}),
-                    onPanCancel: () => _enviar({"t": "soltar", "b": "izq"}),
-                    child: InteractiveViewer(
-                      panEnabled: true,
-                      minScale: 1.0,
-                      maxScale: 8.0,
-                      child: Align(
+                    onPointerDown: (e) => _abajo(e, tamano),
+                    onPointerMove: (e) => _sobreMover(e, tamano),
+                    onPointerUp: (e) => _arriba(e, tamano),
+                    onPointerCancel: (e) => _cancela(e, tamano),
+                    child: SizedBox.expand(
+                      child: Transform(
                         alignment: Alignment.center,
-                        child: AspectRatio(
-                          aspectRatio: 1280 / 720,
-                          child: Image.memory(ultimoFotograma!, fit: BoxFit.contain, gaplessPlayback: true),
-                        ),
+                        transform: Matrix4.identity()
+                          ..translate(desplaza.dx, desplaza.dy)
+                          ..scale(zoom),
+                        child: Image.memory(fotograma!, fit: BoxFit.contain,
+                          gaplessPlayback: true),
                       ),
                     ),
                   );
+                  return dibujar;
                 }),
         ),
-        Text(estado, style: const TextStyle(fontSize: 11, color: Colors.white38)),
+        if (!completo)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(estado, style: const TextStyle(fontSize: 11, color: Colors.white38)),
+          ),
       ],
+    );
+  }
+
+  Widget behavedControls(Widget hijo) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: hijo,
+    );
+  }
+
+  Widget _selector<T>({required T valor, required Map<T, String> opciones, required ValueChanged<T> alElegir}) {
+    final actual = opciones[valor] ?? "?";
+    return PopupMenuButton<T>(
+      onSelected: alElegir,
+      initialValue: valor,
+      itemBuilder: (c) => opciones.entries
+          .map((e) => PopupMenuItem<T>(value: e.key, child: Text(e.value, style: const TextStyle(fontSize: 13))))
+          .toList(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF131A2B),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: const Color(0xFF232C42)),
+        ),
+        child: Text(actual, style: const TextStyle(fontSize: 12.5)),
+      ),
     );
   }
 }
@@ -395,94 +811,323 @@ class _PantallaVideoState extends State<PantallaVideo> {
 
 class PantallaEstado extends StatefulWidget {
   final Conexion conexion;
-  const PantallaEstado({super.key, required this.conexion});
+  final Map<String, dynamic>? datos;
+  final ValueChanged<String> uacBoton;
+  final VoidCallback prueba;
+  const PantallaEstado({super.key, required this.conexion, required this.datos,
+    required this.uacBoton, required this.prueba});
   @override
   State<PantallaEstado> createState() => _PantallaEstadoState();
 }
 
 class _PantallaEstadoState extends State<PantallaEstado> {
-  DatosEstado? datos;
-  Timer? reloj;
-
-  @override
-  void initState() {
-    super.initState();
-    _consultar();
-    reloj = Timer.periodic(const Duration(seconds: 3), (_) => _consultar());
-  }
-
-  Future<void> _consultar() async {
-    try {
-      final r = await http.get(
-        Uri.parse("${widget.conexion.base}/api/estado"),
-        headers: {"Cookie": "sesion=${widget.conexion.token}"},
-      ).timeout(const Duration(seconds: 6));
-      if (r.statusCode == 200 && mounted) {
-        setState(() => datos = DatosEstado.desdeJson(jsonDecode(r.body)));
-      }
-    } catch (_) {}
-  }
-
-  @override
-  void dispose() {
-    reloj?.cancel();
-    super.dispose();
-  }
-
-  String _segsA(int s) {
-    final h = s ~/ 3600;
-    return "$h h ${(s % 3600) ~/ 60} min";
-  }
-
   @override
   Widget build(BuildContext context) {
-    final d = datos;
-    if (d == null) return const Center(child: Text("Consultando…", style: TextStyle(color: Colors.white38)));
+    final d = widget.datos;
+    if (d == null) {
+      return const Center(child: Text("Consultando…", style: TextStyle(color: Colors.white38)));
+    }
+    final discos = (d["discos"] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    final procesos = (d["procesos"] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    final avisos = (d["avisos"] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    final bateria = d["bateria"] as Map<String, dynamic>?;
+    final uac = d["uac"] as Map<String, dynamic>? ?? {};
+    final encendidoS = (d["encendido_s"] as num?)?.toInt() ?? 0;
+    final admin = d["privilegio"] == "administrador";
+
+    double pct(Object? v) => ((v as num?) ?? 0).toDouble();
+
+    String hace(int s) =>
+        s < 60 ? "$s s" : s < 3600 ? "${s ~/ 60} min" : "${s ~/ 3600} h";
+
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       children: [
-        _barra("CPU", d.cpu),
-        _barra("RAM", d.ram),
+        _barra("CPU", pct(d["cpu"])),
+        _barra("RAM", pct(d["ram_pct"])),
+        const SizedBox(height: 10),
+        _tarjeta("Detalles", [
+          "RAM ${d["ram_usada_gb"]} GB de ${d["ram_total_gb"]} GB",
+          if (bateria != null)
+            "Batería ${bateria["pct"]}% ${bateria["enchufado"] == true ? "(cargando ⚡)" : ""}",
+          ...discos.map((x) => "Disco ${x["montaje"]}: ${x["pct"]}% usado, ${x["libre_gb"]} GB libres"),
+          "Red ↓${d["red_baja_kbps"]} kB/s · ↑${d["red_sube_kbps"]} kB/s",
+          "Encendido: ${encendidoS ~/ 3600} h ${(encendidoS % 3600) ~/ 60} min",
+          "Equipo: ${d["host"] ?? "-"}",
+          "Servidor: ${admin ? "administrador ✓ (puede rechazar UAC)" : "usuario normal"}",
+        ]),
         const SizedBox(height: 12),
-        _tarjeta("Detalles", d.detalle + "\nEquipo: ${d.host}"),
+        _tarjeta("Procesos más pesados",
+            procesos.isEmpty ? ["—"] : procesos.map((p) {
+              final cpu = ((p["cpu"] as num?) ?? 0).toDouble();
+              return "${p["nombre"]}  ${cpu.toStringAsFixed(1)}%";
+            }).toList()),
         const SizedBox(height: 12),
-        _tarjeta("Procesos más pesados", d.procesos.isEmpty
-            ? "—"
-            : d.procesos.map((p) {
-                final cpu = (p["cpu"] as num?)?.toDouble() ?? 0.0;
-                return "${p["nombre"]}  ${cpu.toStringAsFixed(1)}%";
-              }).join("\n")),
+        _tarjeta("Últimos avisos",
+            avisos.isEmpty ? ["—"] : avisos.take(10).map((a) {
+              final ico = a["nivel"] == "peligro" ? "🔴" : a["nivel"] == "advertencia" ? "🟡" : "🔵";
+              return "$ico ${a["texto"]}  (hace ${hace((a["hace"] as num?)?.toInt() ?? 0)})";
+            }).toList()),
         const SizedBox(height: 12),
-        _tarjeta("Encendido", _segsA(d.encendidoS)),
+        Builder(builder: (c) {
+          final act = d["actualizacion"] as Map<String, dynamic>?;
+          final lineas = <String>["Versión instalada: V $VERSION_APP"];
+          if (act != null && act["nueva"] != null) {
+            lineas.add("🏁 Hay actualización: V ${act["nueva"]}");
+          }
+          return Column(children: [
+            _tarjeta("Aplicación", lineas),
+            if (act != null && act["nueva"] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.download),
+                  label: Text("⬇ Descargar la versión V ${act["nueva"]}"),
+                  onPressed: () async {
+                    final u = act["url"] as String? ?? "";
+                    try {
+                      await launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text("Abre este enlace: $u",
+                            style: const TextStyle(fontSize: 13)),
+                        duration: const Duration(seconds: 8)));
+                    }
+                  },
+                ),
+              ),
+          ]);
+        }),
+        const SizedBox(height: 14),
+        const Text("AVISOS DE SEGURIDAD (UAC)",
+            style: TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 1)),
+        const SizedBox(height: 4),
+        Text(
+          uac["modo"] == "silencioso" ? "Modo silencioso ✓ (Windows no pregunta)" : "Preguntando (UAC activo)",
+          style: const TextStyle(fontSize: 13.5),
+        ),
+        FilledButton.tonal(
+          onPressed: () => widget.uacBoton(uac["modo"] == "silencioso" ? "aviso" : "silencioso"),
+          child: Text(uac["modo"] == "silencioso" ? "Volver a pedir permisos" : "Dejar de preguntar"),
+        ),
+        FilledButton.tonal(
+          onPressed: widget.prueba,
+          child: const Text("🔔 Probar aviso"),
+        ),
       ],
     );
   }
 
-  Widget _barra(String titulo, double pct) {
-    final color = pct > 88 ? const Color(0xFFF87171) : pct > 70 ? const Color(0xFFFBBF24) : const Color(0xFF4F83FF);
+  Widget _barra(String titulo, double v) {
+    final c = v > 88 ? const Color(0xFFF87171) : v > 70 ? const Color(0xFFFBBF24) : const Color(0xFF4F83FF);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("$titulo  ${pct.toStringAsFixed(0)}%", style: const TextStyle(fontSize: 13, color: Colors.white70)),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(value: pct / 100, color: color, backgroundColor: const Color(0xFF1B2233), minHeight: 9, borderRadius: BorderRadius.circular(6)),
-        ],
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text("$titulo  ${v.toStringAsFixed(0)}%", style: const TextStyle(fontSize: 13, color: Colors.white70)),
+        const SizedBox(height: 4),
+        LinearProgressIndicator(
+          value: v / 100, color: c, backgroundColor: const Color(0xFF1B2233),
+          minHeight: 9, borderRadius: BorderRadius.circular(6)),
+      ]),
     );
   }
 
-  Widget _tarjeta(String titulo, String contenido) {
+  Widget _tarjeta(String titulo, List<String> lineas) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: const Color(0xFF131A2B), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF232C42))),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131A2B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF232C42)),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(titulo.toUpperCase(), style: const TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 1)),
+        Text(titulo.toUpperCase(),
+            style: const TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 1)),
         const SizedBox(height: 6),
-        Text(contenido, style: const TextStyle(fontSize: 13.5)),
+        ...lineas.map((l) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(l, style: const TextStyle(fontSize: 13.5)),
+            )),
       ]),
+    );
+  }
+}
+
+// ------------------------------------------------------------------ audio ---
+
+class PantallaAudio extends StatefulWidget {
+  final Conexion conexion;
+  final Map<String, dynamic>? datos;
+  const PantallaAudio({super.key, required this.conexion, required this.datos});
+  @override
+  State<PantallaAudio> createState() => _PantallaAudioState();
+}
+
+class _PantallaAudioState extends State<PantallaAudio> {
+  WebSocketChannel? canalAudio;
+  bool escuchando = false;
+  String estadoAudio = "apagado";
+  String nota = "";
+  bool mudo = false;
+  double nivel = 50;
+  bool arrastrando = false;
+  int? sr;
+
+  Future<void> _aplicarVolumen(double? nuevo, bool? mudoPred) async {
+    final cuerpo = <String, dynamic>{};
+    if (nuevo != null) cuerpo["nivel"] = nuevo.round();
+    if (mudoPred != null) cuerpo["mudo"] = mudoPred;
+    final r = await apiPost(widget.conexion, "/api/volumen", cuerpo);
+    if (r == null || !mounted) return;
+    mudo = (r["mudo"] ?? false) == true;
+    final nv = (r["nivel"] as num?)?.toInt();
+    if (nv != null && !arrastrando) setState(() => nivel = nv.toDouble());
+  }
+
+  Future<void> _escuchar() async {
+    if (escuchando) {
+      try {
+        canalAudio?.sink.close();
+        await FlutterPcmSound.instance.release();
+      } catch (_) {}
+      setState(() {
+        escuchando = false;
+        canalAudio = null;
+        estadoAudio = "apagado";
+      });
+      return;
+    }
+    try {
+      final c = WebSocketChannel.connect(widget.conexion.urlWsAudio);
+      canalAudio = c;
+      int? srLocal;
+      late final StreamSubscription susc;
+      susc = c.stream.listen(
+        (mensaje) {
+          if (mensaje is String) {
+            try {
+              final meta = jsonDecode(mensaje) as Map<String, dynamic>;
+              srLocal = (meta["sr"] as num?)?.toInt() ?? 48000;
+              if ((meta["error"] ?? "") != "") {
+                setState(() {
+                  nota = "❌ ${meta["error"]}";
+                  escuchando = false;
+                  estadoAudio = "apagado";
+                });
+                susc.cancel();
+                return;
+              }
+              _iniciarAudio(srLocal!);
+              if (mounted) {
+                setState(() {
+                  escuchando = true;
+                  estadoAudio = "escuchando · $srLocal Hz";
+                  nota = "Sonido de la PC al instante (una fracción de segundo es normal).";
+                });
+              }
+            } catch (_) {}
+          } else if (mensaje is List<int> && escuchando) {
+            FlutterPcmSound.instance.feed(Uint8List.fromList(mensaje));
+          }
+        },
+        onError: (_) => _pararAudio(),
+        onDone: () {
+          if (escuchando) {
+            setState(() {
+              escuchando = false;
+              estadoAudio = "conexión cerrada";
+            });
+            _liberarReproduccion();
+          }
+        },
+      );
+    } catch (e) {
+      setState(() => nota = "❌ $e");
+    }
+  }
+
+  Future<void> _iniciarAudio(int sampleRate) async {
+    try {
+      await FlutterPcmSound.instance.setup(
+        sampleRate: sampleRate,
+        channels: 1,
+        format: FpcmFormat.int16,
+      );
+      await FlutterPcmSound.instance.start();
+    } catch (_) {}
+  }
+
+  Future<void> _liberarReproduccion() async {
+    try {
+      await FlutterPcmSound.instance.release();
+    } catch (_) {}
+  }
+
+  Future<void> _pararAudio() async {
+    canalAudio = null;
+    await _liberarReproduccion();
+  }
+
+  @override
+  void dispose() {
+    try {
+      canalAudio?.sink.close();
+    } catch (_) {}
+    _liberarReproduccion();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final v = (widget.datos?["volumen"] as Map<String, dynamic>?);
+    final soportado = v?["soportado"] == true;
+    final nivelReal = (v?["nivel"] as num?)?.toDouble();
+    final mudoReal = v?["mudo"] == true;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          children: [
+            IconButton.filledTonal(
+              onPressed: () => _aplicarVolumen(null, !mudoReal),
+              icon: Text(mudoReal ? "🔊" : "🔇", style: const TextStyle(fontSize: 20)),
+            ),
+            Expanded(
+              child: Slider(
+                value: arrastrando ? nivel : (nivelReal ?? nivel),
+                min: 0, max: 100,
+                onChanged: soportado
+                    ? (nv) { setState(() { nivel = nv; arrastrando = true; }); }
+                    : null,
+                onChangeEnd: soportado
+                    ? (nv) => _aplicarVolumen(nv, null)
+                    : null,
+              ),
+            ),
+            Text("${(nivelReal ?? nivel).round()}%",
+                style: const TextStyle(fontSize: 13)),
+          ],
+        ),
+        const Text("Controla el volumen maestro de la PC",
+            style: TextStyle(fontSize: 11.5, color: Colors.white38)),
+        const SizedBox(height: 18),
+        const Text("SONIDO EN VIVO",
+            style: TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 1)),
+        const SizedBox(height: 6),
+        FilledButton.icon(
+          icon: Icon(escuchando ? Icons.stop : Icons.play_arrow),
+          label: Text(escuchando ? "⏸ Detener sonido" : "▶ Escuchar el sonido de la PC"),
+          onPressed: _escuchar,
+        ),
+        const SizedBox(height: 6),
+        Text(estadoAudio, style: const TextStyle(fontSize: 12.5, color: Colors.white70)),
+        if (nota.isNotEmpty)
+          Text(nota, style: const TextStyle(fontSize: 12, color: Colors.white38)),
+        const SizedBox(height: 14),
+        const Text("Cuando escuches, el audio completo de la PC llega al teléfono en tiempo real.",
+            style: TextStyle(fontSize: 11.5, color: Colors.white38)),
+      ],
     );
   }
 }
@@ -498,25 +1143,36 @@ class PantallaTeclado extends StatefulWidget {
 
 class _PantallaTecladoState extends State<PantallaTeclado> {
   final _texto = TextEditingController();
-  SharedPreferences? _prefs;
+  final Set<String> _mods = {};
 
-  Future<WebSocketChannel> _abrirCanal() async {
-    _prefs ??= await SharedPreferences.getInstance();
-    // el token guardado permite reabrir el canal de atajos sin nueva sesión
-    return WebSocketChannel.connect(Uri.parse(widget.conexion.urlWs));
+  Future<void> _enviaTeclas(String k) async {
+    await apiPost(widget.conexion, "/api/entrada", {
+      "t": "teclas",
+      "mods": _mods.toList(),
+      "k": k,
+    });
+    if (mounted) setState(() => _mods.clear());
   }
 
-  Future<void> _atajo(Map<String, Object?> evento) async {
-    WebSocketChannel? c;
-    try {
-      c = await _abrirCanal();
-      c.sink.add(jsonEncode(evento));
-      await c.sink.close();
-    } catch (_) {}
+  @override
+  void dispose() {
+    _texto.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final chips = ["ctrl", "alt", "shift", "win"]
+        .map((m) => FilterChip(
+              label: Text(m.toUpperCase(), style: const TextStyle(fontSize: 12.5)),
+              selected: _mods.contains(m),
+              onSelected: (v) {
+                setState(() {
+                  v ? _mods.add(m) : _mods.remove(m);
+                });
+              },
+            ))
+        .toList();
     final atajos = <String, Map<String, Object?>>{
       "Escritorio ⊞D": {"t": "teclas", "mods": ["win"], "k": "d"},
       "Explorador ⊞E": {"t": "teclas", "mods": ["win"], "k": "e"},
@@ -527,36 +1183,67 @@ class _PantallaTecladoState extends State<PantallaTeclado> {
       "Enter": {"t": "teclas", "mods": [], "k": "enter"},
       "Esc": {"t": "teclas", "mods": [], "k": "escape"},
       "Tab": {"t": "teclas", "mods": [], "k": "tab"},
-      "Borrar": {"t": "teclas", "mods": [], "k": "backspace"},
+      "Borrar ⌫": {"t": "teclas", "mods": [], "k": "backspace"},
+      "Supr": {"t": "teclas", "mods": [], "k": "delete"},
       "F5": {"t": "teclas", "mods": [], "k": "f5"},
       "F11": {"t": "teclas", "mods": [], "k": "f11"},
+      "Inicio": {"t": "teclas", "mods": [], "k": "home"},
+      "Fin": {"t": "teclas", "mods": [], "k": "end"},
+      "Bloquear ⊞L": {"t": "teclas", "mods": ["win"], "k": "l"},
+      "Alt+F4": {"t": "teclas", "mods": ["alt"], "k": "f4"},
     };
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
+        Wrap(children: chips),
+        const SizedBox(height: 10),
         Row(children: [
           Expanded(
-            child: TextField(controller: _texto, decoration: const InputDecoration(hintText: "Escribe y envía (acepta ñ, á…)", filled: true, border: OutlineInputBorder())),
+            child: TextField(
+              controller: _texto,
+              decoration: const InputDecoration(
+                hintText: "Escribe y envía (ñ, acentos…)",
+                filled: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
           ),
           const SizedBox(width: 8),
           IconButton.filled(
+            onPressed: () async {
+              final s = _texto.text;
+              if (s.isNotEmpty) {
+                await apiPost(widget.conexion, "/api/entrada", {"t": "texto", "s": s});
+                _texto.clear();
+              }
+            },
             icon: const Icon(Icons.send),
-            onPressed: () => _atajo({"t": "texto", "s": _texto.text}),
           ),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: atajos.entries
-              .map((e) => ActionChip(label: Text(e.key), labelStyle: const TextStyle(fontSize: 12.5), onPressed: () => _atajo(e.value)))
+              .map((e) => ActionChip(
+                    label: Text(e.key, style: const TextStyle(fontSize: 12.5)),
+                    onPressed: () async {
+                      final evento = Map<String, Object?>.from(e.value);
+                      final lista = ((evento["mods"] ?? []) as List).cast<Object>();
+                      await apiPost(widget.conexion, "/api/entrada", {
+                        ...evento,
+                        "mods": [..._mods, ...lista],
+                      });
+                      if (mounted && _mods.isNotEmpty) setState(() => _mods.clear());
+                    },
+                  ))
               .toList(),
         ),
         const SizedBox(height: 10),
-        Text("Consejo: escribe texto aquí (Enter envía) y usa los chips para atajos.",
-            style: const TextStyle(fontSize: 11.5, color: Colors.white38)),
-        Text("La escritura se envía por la conexión abierta cuando vuelvas a la pestaña Pantalla.",
-            style: const TextStyle(fontSize: 11.5, color: Colors.white30)),
+        const Text(
+          "Nota: envía atajos y texto al servidor; las teclas también llegan con la pantalla abierta.",
+          style: TextStyle(fontSize: 11.5, color: Colors.white38),
+        ),
       ],
     );
   }
