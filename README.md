@@ -6,12 +6,47 @@
 
 ---
 
-## 📥 ¿Qué descargo?
+## 📥 ¿Qué descargar? — archivos para PC y teléfono
 
-| Deseo | Cómo |
+### 💻 Para la PC (Windows) — el servidor
+
+1. Botón verde **Code → Download ZIP** (arriba) → descomprime.
+2. Entra a la carpeta **`ControlPC\servidor\`**. Ahí están:
+
+| Archivo | Qué hace | ¿Doble clic? |
+|---|---|---|
+| `iniciar.bat` | **abre el servidor** (lo común) | ✅ primera vez instala librerías y muestra IP + contraseña + QR |
+| `iniciar_admin.bat` | lo mismo pero como ADMINISTRADOR (permite 🚫 rechazar UAC desde el teléfono) | opcional |
+| `login.bat` | muestra la contraseña actual y con **Y** la renueva (corta sesiones) | cuando quieras |
+| `autoinicio_todos.bat` | deja configurado que **arranque solo** al encender la PC | una sola vez |
+| `config.json` | guarda tu contraseña y ajustes (no se borra al actualizar) | no tocar |
+
+> La contraseña la ves en la **consola** al arrancar, o con `login.bat`.
+> Windows te pedirá "Permitir acceso" la primera vez: acepta (con *redes privadas*).
+
+### 📱 Para el teléfono (Android)
+
+| Opción | Cómo |
 |---|---|
-| **Controlar mi PC desde el teléfono** | Descarga todo el código (botón verde *Code* → *Download ZIP*, o `git clone`), descomprime, ve a `ControlPC/servidor` y ejecuta `iniciar.bat` |
-| **APK nativa de Android** | Pestaña **Releases** de este repositorio (si está publicada) o compílala gratis con GitHub Actions (sección APK más abajo) |
+| **APK instalable (recomendada)** | En este repositorio entra a 🏷️ **Releases** → descarga **`app-release.apk`** → instálala (si Android pregunta, marca *"Permitir de esta fuente"*) |
+| **App web (sin instalar)** | Abre en Chrome: `http://<IP-de-tu-PC>:8566/app/` y usa "Añadir a pantalla de inicio" |
+
+> En la APK escribe la IP de tu PC y la contraseña que muestra su consola. Listo.
+
+### 🧾 Archivos que verás en el ZIP (referencia rápida)
+
+```
+ControlPC/
+├── servidor/
+│   ├── iniciar.bat            ← PC: doble clic aquí
+│   ├── iniciar_admin.bat      ← PC: versión administrador
+│   ├── login.bat              ← PC: ver/renovar contraseña (Y/N)
+│   ├── autoinicio_todos.bat   ← PC: autoarranque completo
+│   ├── servidor.py            ← motor del servidor
+│   └── estatico/              ← interfaz web del teléfono
+├── apk-flutter/               ← código de la APK (solo si quieres recompilar)
+└── .github/workflows/apk.yml  ← GitHub compila la APK gratis
+```
 
 ## 🚀 Inicio rápido (3 pasos)
 

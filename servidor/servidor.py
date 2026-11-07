@@ -602,7 +602,7 @@ def _bucle_estado() -> None:
         try:
             time.sleep(2.5)
             try:
-                _rotar_contrasena_si_corresponde(ventana=True)
+                _rotar_contrasena_si_corresponde(ventana=False)
             except Exception:
                 pass
             cpu = psutil.cpu_percent(interval=None)
@@ -1494,7 +1494,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     import uvicorn
-    _rotar_contrasena_si_corresponde(ventana=True)
+    _rotar_contrasena_si_corresponde(ventana=False)
     _banner()
     _agregar_aviso("info", "Servidor Control PC listo ✓ conecta el teléfono desde el QR")
     threading.Thread(target=_avisar_actualizacion, daemon=True).start()

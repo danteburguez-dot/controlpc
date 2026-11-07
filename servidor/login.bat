@@ -47,7 +47,7 @@ if "%MODO%"=="servidor" (
   echo   Renovando clave en el servidor en ejecucion...
 ) else (
   echo   El servidor no esta corriendo: renovando en el archivo...
-  python -c "import servidor, time; servidor._rotar_contrasena_si_corresponde(ventana=True, forzar=True)" 2>nul
+  python -c "import servidor, time; servidor._rotar_contrasena_si_corresponde(ventana=False, forzar=True)" 2>nul
 )
 
 REM Relea la nueva contraseña para mostrarla
