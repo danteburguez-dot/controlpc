@@ -177,6 +177,7 @@ ControlPC/
 ├── servidor/          servidor Python (Windows)
 │   ├── iniciar.bat      arranca el servidor (con auto-reinicio)
 │   ├── iniciar_admin.bat  igual, pero como ADMINISTRADOR
+│   ├── login.bat        ver la contraseña y renovarla cuando quiras (Y/N)
 │   ├── autoinicio.bat   tarea simple al encender la PC
 │   ├── autoinicio_todos.bat  configura TODO el autoarranque
 │   ├── servidor.py      todo el servidor (captura + eventos + estado + audio + avisos)

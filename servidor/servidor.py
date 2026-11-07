@@ -231,6 +231,7 @@ def _avisar_actualizacion() -> None:
 PROTEGIDOS_ACTUALIZACION = {
     "config.json", "sesiones.json", "cert.pem", "clave.pem",
     "iniciar.bat", "iniciar_admin.bat", "autoinicio.bat", "autoinicio_todos.bat",
+    "login.bat",
 }
 
 def _aplicar_actualizacion_pc(url_zip: str) -> dict:
@@ -300,10 +301,11 @@ def _aplicar_actualizacion_pc(url_zip: str) -> dict:
 
 # ------------------------------------------------------- rotación de clave ---
 
-def _rotar_contrasena_si_corresponde(ventana: bool = False) -> None:
+def _rotar_contrasena_si_corresponde(ventana: bool = False, forzar: bool = False) -> None:
     """Ciclo de seguridad: cada 90 días la contraseña se renueva y las sesiones
     se borran. La nueva clave se muestra en la PC (consola y ventana) para que el
-    dueño la vuelva a poner en el teléfono."""
+    dueño la vuelva a poner en el teléfono. Con forzar=True renueva al instante
+    (usado por login.bat)."""
     try:
         creada = float(CFG.get("creada", 0) or 0)
         if creada <= 0:
@@ -311,7 +313,7 @@ def _rotar_contrasena_si_corresponde(ventana: bool = False) -> None:
             guardar_config(CFG)
             return
         días = (time.time() - creada) / 86400.0
-        if días < 90.0:
+        if not forzar and días < 90.0:
             return
         alfabeto = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
         nueva = "".join(secrets.choice(alfabeto) for _ in range(8))
@@ -1218,9 +1220,18 @@ async def api_aviso(req: Request):
     _agregar_aviso("info", texto)
     return {"ok": True}
 
+@app.post("/api/rotar-clave")
+async def api_rotar_clave(req: Request):
+    """Renueva la contraseña A MANO. Solo se puede llamar DESDE LA PROPIA PC
+    (127.0.0.1) — es la que usa login.bat; el teléfono no puede tocarla."""
+    usuario = req.client.host if req.client else ""
+    if usuario not in ("127.0.0.1", "::1"):
+        return JSONResponse({"ok": False, "error": "solo-localhost"}, status_code=403)
+    _rotar_contrasena_si_corresponde(ventana=False, forzar=True)
+    return {"ok": True, "nueva": str(CFG.get("contrasena", "")), "dias": 90}
+
 @app.post("/api/auto-actualizar")
-async def api_auto_actualizar(req: Request):
-    """Dispara la actualización automática de la PC desde el teléfono."""
+async def api_auto_actualizar(req: Request):    """Dispara la actualización automática de la PC desde el teléfono."""
     token = req.cookies.get("sesion", "")
     if not token_valido(token):
         return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
