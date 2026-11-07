@@ -446,7 +446,12 @@ class _PantallaEstadoState extends State<PantallaEstado> {
         const SizedBox(height: 12),
         _tarjeta("Detalles", d.detalle + "\nEquipo: ${d.host}"),
         const SizedBox(height: 12),
-        _tarjeta("Procesos más pesados", d.procesos.isEmpty ? "—" : d.procesos.map((p) => "${p["nombre"]}  ${(p["cpu"] ?? 0).toStringAsFixed(1)}%").join("\n")),
+        _tarjeta("Procesos más pesados", d.procesos.isEmpty
+            ? "—"
+            : d.procesos.map((p) {
+                final cpu = (p["cpu"] as num?)?.toDouble() ?? 0.0;
+                return "${p["nombre"]}  ${cpu.toStringAsFixed(1)}%";
+              }).join("\n")),
         const SizedBox(height: 12),
         _tarjeta("Encendido", _segsA(d.encendidoS)),
       ],
