@@ -64,6 +64,11 @@ jobs:
               -e 's/minSdk = flutter.minSdkVersion/minSdk = 23/' \
               android/app/build.gradle.kts || true
           fi
+          fdim=$(ls -d ~/.pub-cache/hosted/pub.dev/flutter_pcm_sound-* 2>/dev/null | head -1)
+          if [ -n "$fdim" ] && [ -f "$fdim/android/build.gradle" ]; then
+            sed -i -E 's/compileSdk(Version)?( )?=?( )?33/compileSdkVersion 36/g' "$fdim/android/build.gradle" || true
+            grep -E "compileSdk" "$fdim/android/build.gradle" || true
+          fi
           grep -E "compileSdk|targetSdk|minSdk" android/app/build.gradle* | head -8
 
       - name: Compilar APK (release)
