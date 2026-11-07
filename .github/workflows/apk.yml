@@ -46,6 +46,25 @@ jobs:
           cd apk-flutter
           flutter create . --org com.controlpc.app --project-name controlpc --platforms=android
           flutter pub get
+          # Los plugins modernos piden compileSdk 34+: fuerza las versiones
+          if [ -f android/app/build.gradle ]; then
+            sed -i \
+              -e 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' \
+              -e 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' \
+              -e 's/targetSdk = flutter.targetSdkVersion/targetSdk = 36/' \
+              -e 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 36/' \
+              -e 's/minSdk = flutter.minSdkVersion/minSdk = 23/' \
+              -e 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' \
+              android/app/build.gradle || true
+          fi
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i \
+              -e 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' \
+              -e 's/targetSdk = flutter.targetSdkVersion/targetSdk = 36/' \
+              -e 's/minSdk = flutter.minSdkVersion/minSdk = 23/' \
+              android/app/build.gradle.kts || true
+          fi
+          grep -E "compileSdk|targetSdk|minSdk" android/app/build.gradle* | head -8
 
       - name: Compilar APK (release)
         run: |
