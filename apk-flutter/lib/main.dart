@@ -19,7 +19,7 @@ import "package:shared_preferences/shared_preferences.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
-const String VERSION_APP = "1.2";
+const String VERSION_APP = "1.3";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -104,7 +104,8 @@ class _ControlPCAppState extends State<ControlPCApp> {
     if (mounted) setState(() => cargando = false);
   }
 
-  Future<bool> _entrar(String host, int puerto, String clave) async {
+  /// Devuelve null si entró bien; si falló, el mensaje del error.
+  Future<String?> _entrar(String host, int puerto, String clave) async {
     try {
       final r = await http
           .post(
@@ -113,15 +114,20 @@ class _ControlPCAppState extends State<ControlPCApp> {
             body: jsonEncode({"contrasena": clave}),
           )
           .timeout(const Duration(seconds: 6));
-      if (r.statusCode != 200) return false;
+      if (r.statusCode == 401) {
+        return "Contraseña incorrecta — usa el ojo 👁 para verificarla";
+      }
+      if (r.statusCode != 200) {
+        return "El servidor respondió ${r.statusCode} — revisa IP y puerto";
+      }
       final token = jsonDecode(r.body)["token"] as String;
       final c = Conexion(host: host, puerto: puerto, token: token);
       setState(() => con = c);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(Conexion.clavePrefs, "${c.host}|${c.puerto}|${c.token}");
-      return true;
+      return null;
     } catch (_) {
-      return false;
+      return "No se pudo conectar: revisa IP, puerto y que el servidor esté abierto";
     }
   }
 
@@ -159,7 +165,7 @@ class _ControlPCAppState extends State<ControlPCApp> {
 // ------------------------------------------------------------------ acceso ---
 
 class PantallaAcceso extends StatefulWidget {
-  final Future<bool> Function(String, int, String) alEntrar;
+  final Future<String?> Function(String, int, String) alEntrar;
   const PantallaAcceso({super.key, required this.alEntrar});
   @override
   State<PantallaAcceso> createState() => _PantallaAccesoState();
@@ -171,6 +177,8 @@ class _PantallaAccesoState extends State<PantallaAcceso> {
   final _clave = TextEditingController();
   String? error;
   bool ocupado = false;
+  bool verClave = false;
+  bool errorClave = false;
 
   @override
   void dispose() {
@@ -181,18 +189,21 @@ class _PantallaAccesoState extends State<PantallaAcceso> {
   }
 
   Future<void> _entrar() async {
-    setState(() => ocupado = true);
-    final ok = await widget.alEntrar(
+    setState(() { ocupado = true; error = null; errorClave = false; });
+    final mensaje = await widget.alEntrar(
       _host.text.trim(),
       int.tryParse(_puerto.text.trim()) ?? 8566,
       _clave.text.trim(),
     );
     if (!mounted) return;
-    if (!ok) {
+    if (mensaje != null) {
       setState(() {
         ocupado = false;
-        error = "No se pudo conectar: revisa IP, puerto y contraseña.";
+        error = mensaje;
+        errorClave = mensaje.startsWith("Contraseña");
       });
+    } else {
+      setState(() => ocupado = false);
     }
   }
 
@@ -238,14 +249,20 @@ class _PantallaAccesoState extends State<PantallaAcceso> {
               const SizedBox(height: 12),
               TextField(
                 controller: _clave,
-                obscureText: true,
-                decoration: const InputDecoration(
+                obscureText: !verClave,
+                decoration: InputDecoration(
                   labelText: "Contraseña",
                   border: OutlineInputBorder(),
                   filled: true,
+                  errorText: errorClave ? (error ?? "Contraseña incorrecta") : null,
+                  helperText: "Toca el ojo 👁 para ver lo que escribiste",
+                  suffixIcon: IconButton(
+                    icon: Icon(verClave ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => verClave = !verClave),
+                  ),
                 ),
               ),
-              if (error != null) ...[
+              if (error != null && !errorClave) ...[
                 const SizedBox(height: 12),
                 Text(error!, style: const TextStyle(color: Color(0xFFF87171), fontSize: 13)),
               ],
