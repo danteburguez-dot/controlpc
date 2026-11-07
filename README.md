@@ -19,6 +19,7 @@
 | `iniciar_admin.bat` | lo mismo pero como ADMINISTRADOR (permite 🚫 rechazar UAC desde el teléfono) | opcional |
 | `login.bat` | muestra la contraseña actual + **2 QR**: uno que conecta el teléfono sin escribir nada (la clave va dentro del QR) y otro normal — con **Y** renueva la clave y el QR | cuando quieras |
 | `autoinicio_todos.bat` | deja configurado que **arranque solo** al encender la PC | una sola vez |
+| `activar_tailscale.bat` | instala/conecta **Tailscale** y te imprime la IP 100.x + QR para acceso **desde cualquier lugar del mundo** | una vez por PC |
 | `config.json` | guarda tu contraseña y ajustes (no se borra al actualizar) | no tocar |
 
 > La contraseña la ves en la **consola** al arrancar, o con `login.bat` (con los
@@ -60,6 +61,14 @@
 - Se ejecuta una sola vez; para revertir:
   `schtasks /Delete /TN "ControlPC Servidor Admin" /F` y borra el atajo
   en `shell:startup`.
+
+### 6️⃣ `activar_tailscale.bat` — 🌍 "Control PC - Tailscale (cualquier lugar)"
+- Instala Tailscale (gratis) si falta y abre tu navegador para el login de
+  cuenta (Google/GitHub…).
+- IMPORTANTE: en el teléfono instala la app Tailscale y entra con LA MISMA cuenta.
+- Al terminar muestra la IP `100.x.y.z` de tu PC y un QR: escanéalo y conectas
+  desde CUALQUIER red del mundo (incluso PC y teléfono en redes distintas, datos
+  móviles, otro país). También accesible como `python servidor.py --tailscale`.
 
 ### 📱 Para el teléfono (Android)
 

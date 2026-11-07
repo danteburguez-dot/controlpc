@@ -1508,6 +1508,48 @@ def _opciones_conexion() -> list:
     unicas.sort(key=prioridad)
     return unicas
 
+def _tailscale_ruta():
+    import shutil as _sh
+    r = _sh.which("tailscale")
+    if r:
+        return r
+    for cand in (r"C:\Program Files\Tailscale\tailscale.exe",):
+        if os.path.exists(cand):
+            return cand
+    return None
+
+def _banner_tailscale() -> None:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    ruta = _tailscale_ruta()
+    if ruta is None:
+        print("Tailscale no esta instalado en esta PC.")
+        print("Instala: https://tailscale.com/download  (o usa activar_tailscale.bat)")
+        return
+    try:
+        salida = subprocess.run([ruta, "ip", "-4"], capture_output=True, text=True, timeout=15)
+        ip = (salida.stdout.strip().splitlines() or [""])[0]
+    except Exception as e:
+        ip = ""
+        print(f"no se pudo leer la IP: {str(e)[:100]}")
+    puerto = int(CFG.get("puerto", PUERTO_DEF))
+    clave = str(CFG.get("contrasena", ""))
+    if not ip or not ip.strip():
+        print("Tailscale NO esta conectado (ejecuta: tailscale up  y haz login en el navegador).")
+        print("Despues de conectar, corre este comando de nuevo.")
+        return
+    print("=" * 50)
+    print("   CONTROL PC por Tailscale (cualquier lugar)")
+    print("=" * 50)
+    print(f"  IP Tailscale:    {ip}")
+    print(f"  Puerto:          {puerto}")
+    print(f"  Contraseña:      {clave}")
+    print("  App Tailscale en el telefono: MISMA cuenta.")
+    print(f"  URL: http://{ip}:{puerto}/app/")
+    _imprimir_qr(f"http://{ip}:{puerto}/conectar?c={clave}")
+
 def _banner_login() -> None:
     """Banner del login.bat: clave actual + los dos QR de conexión."""
     try:
@@ -1583,6 +1625,9 @@ if __name__ == "__main__":
     if "--rotar" in sys.argv:
         _rotar_contrasena_si_corresponde(ventana=True, forzar=True)
         print("Clave nueva guardada en config.json. Conecta el teléfono con ella.")
+        sys.exit(0)
+    if "--tailscale" in sys.argv or "--ts" in sys.argv:
+        _banner_tailscale()
         sys.exit(0)
     modo_prueba = "--prueba" in sys.argv
     _crear_iconos()
