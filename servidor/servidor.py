@@ -1472,36 +1472,78 @@ def _imprimir_qr(texto: str) -> None:
     except Exception:
         print(f"   {texto}")
 
+def _opciones_conexion() -> list:
+    """Todas las IPs por donde se puede entrar (Wi-Fi, hotspot, Ethernet, Tailscale…)."""
+    salida = []
+    try:
+        for nombre, direcciones in psutil.net_if_addrs().items():
+            if "loopback" in nombre.lower() or "bluetooth" in nombre.lower():
+                continue
+            for a in direcciones:
+                if a.family != socket.AF_INET:
+                    continue
+                ip = a.address
+                if ip.startswith("127.") or ip.startswith("169.254."):
+                    continue
+                if not all(c.isdigit() or c == "." for c in ip):
+                    continue
+                salida.append({"nombre": nombre, "ip": ip})
+    except Exception:
+        pass
+    unicas = []
+    vistas = set()
+    for o in salida:
+        if o["ip"] in vistas:
+            continue
+        vistas.add(o["ip"])
+        unicas.append(o)
+    def prioridad(op):
+        ip = op["ip"]
+        n = op["nombre"].lower()
+        if "tailscale" in n:
+            return 2
+        if ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172."):
+            return 0
+        return 1
+    unicas.sort(key=prioridad)
+    return unicas
+
 def _banner_login() -> None:
     """Banner del login.bat: clave actual + los dos QR de conexión."""
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    ip = ip_principal()
     puerto = int(CFG.get("puerto", PUERTO_DEF))
-    url_app = f"http://{ip}:{puerto}/app/"
     clave = str(CFG.get("contrasena", ""))
-    url_rapida = f"http://{ip}:{puerto}/conectar?c={clave}"
     dias = max(0, 90 - int((time.time() - float(CFG.get("creada", 0) or 0)) / 86400))
-    print("=" * 50)
-    print("        LOGIN de Control PC".center(50))
-    print("=" * 50)
-    print(f"  Direccion IP:    {ip}")
+    opciones = _opciones_conexion() or [{"nombre": "principal", "ip": ip_principal()}]
+    print("=" * 56)
+    print("        LOGIN de Control PC".center(56))
+    print("=" * 56)
     print(f"  Puerto:          {puerto}")
     print(f"  Contraseña:      {clave}")
     if dias:
         print(f"  Ciclo restante:  {dias} días")
-    print("-" * 50)
-    print("  [1] RÁPIDA — escanea y entra SIN escribir la clave:")
-    print(f"      {url_rapida}")
-    _imprimir_qr(url_rapida)
-    print("  [2] NORMAL — escanea y el teléfono pedirá la clave:")
-    _imprimir_qr(url_app)
-    print("=" * 50)
+    print("-" * 56)
+    print("  REDES DISPONIBLES — usa la IP/QR de la red en la que")
+    print("  esté conectado tu teléfono ahora mismo:")
+    for i, op in enumerate(opciones, 1):
+        print(f"   [{i}] {op['nombre']}")
+        print(f"       IP: {op['ip']}:{puerto}")
+    print("-" * 56)
+    for i, op in enumerate(opciones, 1):
+        print(f"  [{i}] QR RÁPIDA — {op['nombre']} ({op['ip']}):")
+        print(f"      escanea y entra SIN escribir la clave: {puerto}")
+        _imprimir_qr(f"http://{op['ip']}:{puerto}/conectar?c={clave}")
+        if i == 1:
+            print(f"  [QR NORMAL de {op['nombre']}] (pedirá la clave en el teléfono):")
+            _imprimir_qr(f"http://{op['ip']}:{puerto}/app/")
+    print("=" * 56)
     print("   Datos para escribir a mano en la APK del teléfono:")
-    print(f"   {ip} : {puerto}   con la clave {clave}")
-    print("=" * 50)
+    print("   elige la IP de la red activa de arriba + puerto " + str(puerto))
+    print("   + la clave " + clave)
+    print("=" * 56)
 
 def _banner() -> None:
     try:
@@ -1509,21 +1551,20 @@ def _banner() -> None:
     except Exception:
         pass
     ancho_terminal = 46
-    ip = ip_principal()
+    opciones = _opciones_conexion() or [{"nombre": "principal", "ip": ip_principal()}]
+    primera = opciones[0]
+    ip = primera["ip"]
     puerto = int(CFG.get("puerto", PUERTO_DEF))
     url = f"http://{ip}:{puerto}/app/"
     print("=" * ancho_terminal)
     print("  CONTROL PC — servidor activo".center(ancho_terminal))
     print("=" * ancho_terminal)
-    print(f"  Peligro de privacidad: solo comparte esto con tu teléfono.")
-    print(f"  Abre en el teléfono:   {url}")
-    print(f"  Direccion IP:    {ip}")
-    print(f"  Puerto:          {puerto}")
+    print("  Solo comparte esto con tu teléfono.")
+    print("  REDES DISPONIBLES (usa la del teléfono):")
+    for i, op in enumerate(opciones, 1):
+        print(f"   [{i}] {op['nombre']}: {op['ip']}:{puerto}")
     print(f"  Contraseña:            {CFG.get('contrasena', '????')}")
     print("-" * ancho_terminal)
-    print("  [1] RÁPIDA — QR que conecta SIN escribir la clave:")
-    _imprimir_qr(f"http://{ip}:{puerto}/conectar?c={CFG.get('contrasena', '')}")
-    print("  [2] NORMAL — QR que pide la clave en el teléfono:")
     _imprimir_qr(url)
     print("  Forzar escritura? usa la clave listada arriba.")
     print("  (Ctrl+C aquí para apagar el servidor)")
