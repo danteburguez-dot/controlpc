@@ -59,7 +59,7 @@ ESTATICO = BASE / "estatico"
 ARCHIVO_CONFIG = BASE / "config.json"
 
 PUERTO_DEF = 8566
-VERSION_APP = "1.3"
+VERSION_APP = "1.5"
 REPO_PUBLICO = "https://api.github.com/repos/danteburguez-dot/controlpc/releases/latest"
 # nivel -> (ancho máximo, calidad JPEG)
 CALIDADES = {0: (960, 45), 1: (1280, 55), 2: (1600, 68), 3: (1920, 78)}

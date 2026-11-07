@@ -19,7 +19,7 @@ import "package:shared_preferences/shared_preferences.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
-const String VERSION_APP = "1.4";
+const String VERSION_APP = "1.5";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

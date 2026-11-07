@@ -69,6 +69,13 @@ jobs:
             sed -i -E 's/compileSdk(Version)?( )?=?( )?33/compileSdkVersion 36/g' "$fdim/android/build.gradle" || true
             grep -E "compileSdk" "$fdim/android/build.gradle" || true
           fi
+          # MUY IMPORTANTE: permite http en claro (el servidor de la casa es http://)
+          for MAN in android/app/src/main/AndroidManifest.xml; do
+            if [ -f "$MAN" ] && ! grep -q "usesCleartextTraffic" "$MAN"; then
+              sed -i 's/<application /<application android:usesCleartextTraffic="true" /' "$MAN"
+            fi
+          done
+          grep "usesCleartextTraffic" android/app/src/main/AndroidManifest.xml || true
           grep -E "compileSdk|targetSdk|minSdk" android/app/build.gradle* | head -8
 
       - name: Compilar APK (release)
