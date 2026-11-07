@@ -5,6 +5,7 @@
 
 import "dart:async";
 import "dart:convert";
+import "dart:io";
 import "dart:math" as math;
 import "dart:typed_data";
 
@@ -12,6 +13,8 @@ import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_pcm_sound/flutter_pcm_sound.dart";
 import "package:http/http.dart" as http;
+import "package:open_filex/open_filex.dart";
+import "package:path_provider/path_provider.dart";
 import "package:shared_preferences/shared_preferences.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
@@ -821,6 +824,60 @@ class PantallaEstado extends StatefulWidget {
 }
 
 class _PantallaEstadoState extends State<PantallaEstado> {
+  bool descargando = false;
+  int progreso = 0;
+
+  Future<void> _descargarEInstalar(Map<String, dynamic> act) async {
+    final urlApk = (act["apk"] as String? ?? "").trim();
+    if (urlApk.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Esta actualización no trae APK: abre la página en el navegador.",
+            style: TextStyle(fontSize: 13))));
+      final u = act["url"] as String? ?? "";
+      try {
+        await launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+      } catch (_) {}
+      return;
+    }
+    setState(() { descargando = true; progreso = 0; });
+    try {
+      final dir = await getTemporaryDirectory();
+      final ruta = "${dir.path}${Platform.pathSeparator}controlpc.apk";
+      final cliente = http.Client();
+      final solicitud = http.Request("GET", Uri.parse(urlApk));
+      final respuesta = await cliente.send(solicitud).timeout(const Duration(minutes: 10));
+      if (respuesta.statusCode != 200) throw "HTTP ${respuesta.statusCode}";
+      final total = respuesta.contentLength ?? 0;
+      int recibido = 0;
+      final bloque = <int>[];
+      final archivo = File(ruta);
+      final f = archivo.openSync(mode: FileMode.write);
+      await for (final trozo in respuesta.stream) {
+        recibido += trozo.length;
+        f.writeFromSync(trozo);
+        if (total > 0 && mounted) {
+          setState(() => progreso = ((recibido / total) * 100).clamp(0, 100).round());
+        }
+      }
+      f.closeSync();
+      cliente.close();
+      if (!mounted) return;
+      setState(() { descargando = false; progreso = 100; });
+      final abierta = await OpenFilex.open(ruta);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 6),
+        content: Text(
+          abierta.type != ResultType.done
+              ? "Instalador abierto: acepta 'Instalar' y si pide, marca 'Permitir de esta fuente'."
+              : "Descargada en $ruta",
+          style: const TextStyle(fontSize: 13))));
+    } catch (e) {
+      setState(() => descargando = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("No se pudo actualizar: $e", style: const TextStyle(fontSize: 13))));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = widget.datos;
@@ -880,21 +937,23 @@ class _PantallaEstadoState extends State<PantallaEstado> {
             if (act != null && act["nueva"] != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.download),
-                  label: Text("⬇ Descargar la versión V ${act["nueva"]}"),
-                  onPressed: () async {
-                    final u = act["url"] as String? ?? "";
-                    try {
-                      await launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text("Abre este enlace: $u",
-                            style: const TextStyle(fontSize: 13)),
-                        duration: const Duration(seconds: 8)));
-                    }
-                  },
-                ),
+                child: Column(children: [
+                  FilledButton.icon(
+                    icon: descargando
+                        ? const SizedBox(height: 18, width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.download),
+                    label: Text(descargando
+                        ? "Descargando… $progreso%"
+                        : "⬇ Instalar la versión V ${act["nueva"]} ahora"),
+                    onPressed: () => _descargarEInstalar(act),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    "Se descarga e instala automáticamente (Android pedirá confirmar).",
+                    style: const TextStyle(fontSize: 11.5, color: Colors.white38),
+                  ),
+                ]),
               ),
           ]);
         }),

@@ -199,6 +199,19 @@ ControlPC/
   `iniciar_admin.bat`). Nota de Windows: la ventana de UAC en sí no se puede clicar
   remotamente (escritorio seguro); por eso "rechazar" la mata y "permitir" la evita a futuro.
 
+## ⬇ Actualizaciones automáticas
+
+- Cada servidor (y cada app) revisa si salió una versión nueva.
+- En la **PC** aparece una ventana: *"¿Descargar y actualizar automáticamente?"* —
+  al aceptar descarga, reemplaza el programa **conservando** tu `config.json`,
+  sesiones, certificados y los `.bat`, y se reinicia sola con la versión nueva.
+  Desde el teléfono también puedes dispararla (panel Aplicación → "🚀 Actualizar la PC").
+- En la **APK**: la pestaña Estado muestra "⬇ Instalar la versión V X ahora" que
+  descarga el archivo con barra de progreso y abre el instalador de Android.
+  Primera vez marca "Permitir de esta fuente" (Android lo pide una sola vez).
+- Con visitantes que activan el teléfono: si el servidor está desactualizado,
+  la notificación 🔔 en el teléfono avisa igualmente.
+
 ## 🤝 Contribuir
 
 Ideas que serían bienvenidas: captura con la API `DXGI`, transmitir sonido,

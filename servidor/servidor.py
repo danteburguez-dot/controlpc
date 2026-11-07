@@ -174,9 +174,15 @@ def _version_publicada(caducada: bool = False) -> dict:
         res = {
             "nueva": str(datos.get("tag_name", "")).lstrip("v"),
             "url": str(datos.get("html_url", "")),
+            "zip": str(datos.get("zipball_url", "")),
+            "apk": "",
         }
+        for artefacto in datos.get("assets") or []:
+            if str(artefacto.get("name", "")).lower().endswith(".apk"):
+                res["apk"] = str(artefacto.get("browser_download_url", ""))
+                break
     except Exception as e:
-        res = {"nueva": None, "url": None, "error": str(e)[:120]}
+        res = {"nueva": None, "url": None, "zip": "", "apk": "", "error": str(e)[:120]}
     REV_CACHE["t"] = ahora
     REV_CACHE["res"] = res
     return res
@@ -209,13 +215,88 @@ def _avisar_actualizacion() -> None:
             f"Hay una nueva versión de Control PC:\n\n"
             f"  instada: V {VERSION_APP}\n"
             f"  pública: V {aviso['nueva']}\n\n"
-            f"¿Abrir la página para descargar la nueva versión?",
+            f"¿Descargar y actualizar automáticamente?",
             "Control PC — actualización",
             0x40 | 0x4)   # MDICON + YESNO
         if ventana == 6:
-            webbrowser.open(aviso["url"])
+            enlace = (aviso.get("zip") or "").strip()
+            if enlace:
+                threading.Thread(target=_aplicar_actualizacion_pc,
+                                 args=(enlace,), daemon=True).start()
+            else:
+                webbrowser.open(aviso["url"])
     except Exception:
         pass
+
+PROTEGIDOS_ACTUALIZACION = {
+    "config.json", "sesiones.json", "cert.pem", "clave.pem",
+    "iniciar.bat", "iniciar_admin.bat", "autoinicio.bat", "autoinicio_todos.bat",
+}
+
+def _aplicar_actualizacion_pc(url_zip: str) -> dict:
+    """Descarga el zip del release, reemplaza el programa (conservando la
+    contraseña, sesiones, certificados y los .bat) y reinicia el servidor."""
+    try:
+        import urllib.request
+        import zipfile
+        import shutil
+        import tempfile
+        temp = Path(tempfile.gettempdir())
+        paquete = temp / "controlpc-actualizacion.zip"
+        carpeta = temp / "controlpc-actualizacion"
+        _agregar_aviso("info", "⬇ Descargando la actualización…", clave="act-dl", enfriamiento=60)
+        peticion = urllib.request.Request(url_zip, headers={"User-Agent": "ControlPC-updater"})
+        with urllib.request.urlopen(peticion, timeout=180) as r, open(paquete, "wb") as archivo:
+            while True:
+                bloque = r.read(65536)
+                if not bloque:
+                    break
+                archivo.write(bloque)
+        if carpeta.exists():
+            shutil.rmtree(carpeta, ignore_errors=True)
+        with zipfile.ZipFile(paquete) as z:
+            z.extractall(carpeta)
+        raiz = None
+        for nino in carpeta.iterdir():
+            if nino.is_dir():
+                raiz = nino
+                break
+        if raiz is None:
+            return {"ok": False, "error": "zip inesperado"}
+        raiz_del_programa = BASE.parent if BASE.name == "servidor" else BASE
+
+        def _copiar(origen: Path) -> None:
+            if origen.name in PROTEGIDOS_ACTUALIZACION:
+                return
+            destino = raiz_del_programa / origen.relative_to(raiz)
+            if origen.is_dir():
+                if destino.exists():
+                    shutil.rmtree(destino, ignore_errors=True)
+                shutil.copytree(origen, destino,
+                                ignore=shutil.ignore_patterns("__pycache__", ".dart_tool", "build"))
+            else:
+                if destino.exists():
+                    destino.unlink()
+                shutil.copy2(origen, destino)
+
+        for nino in raiz.iterdir():
+            if nino.name == ".github":
+                continue
+            _copiar(nino)
+        _agregar_aviso("info", "✅ Actualización instalada. Reiniciando el servidor…")
+        if os.name == "nt":
+            try:
+                ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "Actualización aplicada correctamente.\n\nEl servidor se reinicia en un momento con la versión nueva.",
+                    "Control PC — actualización", 0x40)
+            except Exception:
+                pass
+        threading.Timer(1.2, lambda: os._exit(0)).start()
+        return {"ok": True, "reiniciando": True}
+    except Exception as e:
+        _agregar_aviso("advertencia", f"⚠ La actualización falló: {str(e)[:120]}")
+        return {"ok": False, "error": str(e)[:160]}
 
 # ------------------------------------------------------- rotación de clave ---
 
@@ -1136,6 +1217,21 @@ async def api_aviso(req: Request):
     texto = str(datos.get("texto", "")).strip()[:200] or "Aviso de prueba 🔔"
     _agregar_aviso("info", texto)
     return {"ok": True}
+
+@app.post("/api/auto-actualizar")
+async def api_auto_actualizar(req: Request):
+    """Dispara la actualización automática de la PC desde el teléfono."""
+    token = req.cookies.get("sesion", "")
+    if not token_valido(token):
+        return JSONResponse({"ok": False, "error": "sin-sesion"}, status_code=401)
+    pub = _version_publicada()
+    enlace = (pub.get("zip") or "")
+    if not enlace or not pub.get("nueva"):
+        return {"ok": False, "error": "sin-datos-de-actualizacion"}
+    if _version_tupla(VERSION_APP) >= _version_tupla(pub["nueva"]):
+        return {"ok": False, "error": "ya-es-latima"}
+    threading.Thread(target=_aplicar_actualizacion_pc, args=(enlace,), daemon=True).start()
+    return {"ok": True, "nota": "revisa la pantalla de la PC: se descarga e instala sola"}
 
 @app.post("/api/entrada")
 async def api_entrada(req: Request):
