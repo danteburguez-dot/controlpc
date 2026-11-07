@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#05070c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Control PC</title>
+  <link rel="icon" href="iconos/icon-192.png">
+  <link rel="apple-touch-icon" href="iconos/icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+
+<!-- ============ ACCESO ============ -->
+<section id="vista-acceso" class="vista">
+  <div class="tarjeta-acceso">
+    <div class="logo-app">🖥️</div>
+    <h1>Control PC</h1>
+    <p class="texto-gris">Escribe la contraseña que aparece<br>en la ventana del servidor</p>
+    <input id="campo-clave" type="password" autocomplete="current-password" placeholder="Contraseña">
+    <button id="btn-entrar" class="boton principal">Conectar</button>
+    <p id="error-acceso" class="error" hidden>Contraseña incorrecta</p>
+  </div>
+</section>
+
+<!-- ============ APLICACIÓN ============ -->
+<section id="vista-principal" class="vista" hidden>
+
+  <header id="barra-superior">
+    <button id="boton-salir" class="boton-ico" title="Cerrar sesión">⏏</button>
+    <span id="punto-estado" class="punto amarillo"></span>
+    <span id="texto-estado">Conectando…</span>
+    <span id="texto-ping"></span>
+    <span class="flex"></span>
+    <button id="boton-captura" class="boton-ico" title="Guardar captura">📷</button>
+    <button id="boton-completa" class="boton-ico" title="Pantalla completa">⛶</button>
+  </header>
+
+  <main id="host-lienzo">
+    <canvas id="lienzo"></canvas>
+    <div id="mensaje-fuera" hidden>
+      <div class="icono">📴</div>
+      <div class="titulo">PC sin conexión</div>
+      <div class="texto-gris">Reintentando automáticamente…</div>
+    </div>
+  </main>
+
+  <nav id="barra-inferior">
+    <button id="boton-estado" class="opcion">📊<span>Estado</span></button>
+    <button id="boton-teclado" class="opcion">⌨️<span>Teclado</span></button>
+    <button id="boton-config" class="opcion">⚙️<span>Ajustes</span></button>
+    <button id="boton-puntero" class="opcion">🖱️<span>Puntero</span></button>
+    <button id="boton-zoom-menos" class="opcion">－<span>Zoom −</span></button>
+    <button id="boton-zoom-mas" class="opcion">＋<span>Zoom ＋</span></button>
+    <button id="boton-zoom-reset" class="opcion">1:1<span>Reset</span></button>
+  </nav>
+
+  <!-- -------- Panel ESTADO -------- -->
+  <aside id="panel-estado" class="panel borde-abajo" hidden>
+    <div class="barra-titulo"><span>Estado del sistema</span><button class="cerrar" data-cierra="panel-estado">✕</button></div>
+    <div class="contenido-panel">
+      <div id="cuerpo-estado" class="cuerpo-estado">
+        <div class="texto-gris centrado">Cargando datos…</div>
+      </div>
+      <div id="info-acceso" class="info-acceso texto-gris"></div>
+    </div>
+  </aside>
+
+  <!-- -------- Panel CONFIG -------- -->
+  <aside id="panel-config" class="panel borde-abajo" hidden>
+    <div class="barra-titulo"><span>Ajustes</span><button class="cerrar" data-cierra="panel-config">✕</button></div>
+    <div class="contenido-panel">
+      <div class="fila-config">
+        <label>Calidad de imagen</label>
+        <select id="sel-calidad">
+          <option value="0">Muy baja (móvil lento)</option>
+          <option value="1" selected>Media</option>
+          <option value="2">Alta</option>
+          <option value="3">Máxima</option>
+        </select>
+      </div>
+      <div class="fila-config">
+        <label>Fotogramas por segundo</label>
+        <span id="valor-fps" class="texto-gris">12</span>
+      </div>
+      <input id="sel-fps" type="range" min="3" max="24" value="12">
+      <div class="fila-config">
+        <label>Monitor</label>
+        <select id="sel-pantalla">
+          <option value="1" selected>Pantalla principal</option>
+          <option value="0">Todas las pantallas</option>
+          <option value="2">Monitor 2</option>
+        </select>
+      </div>
+      <button id="btn-reconectar" class="boton">Reconectar video</button>
+      <details class="ayuda">
+        <summary>¿Cómo se usa con los dedos?</summary>
+        <ul>
+          <li>👆 <b>Toque</b> = clic izquierdo</li>
+          <li>👆👆 <b>Doble toque</b> = doble clic</li>
+          <li>✊ <b>Mantener 0,6 s</b> = clic derecho</li>
+          <li>🖱️ <b>Arrastrar 1 dedo</b> = mover el ratón / arrastrar ventanas (se pulsa al arrastrar)</li>
+          <li>🖐️ <b>Botón “Puntero” encendido</b> = el arrastre solo MUEVE el ratón sin presionar (para recorrer menús); los toques siguen haciendo clic</li>
+          <li>↕️ <b>2 dedos arriba/abajo</b> = rueda del ratón (scroll)</li>
+          <li>🤏 <b>Pellizco 2 dedos</b> = zoom de la vista (en zoom, arrastrar = desplazar)</li>
+          <li>🎯 La flecha del ratón se ve en la imagen; se pone roja mientras el botón está presionado</li>
+        </ul>
+      </details>
+      <button id="btn-cerrar-sesion" class="boton peligro">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <!-- -------- Panel TECLADO -------- -->
+  <aside id="panel-teclado" class="panel borde-abajo" hidden>
+    <div class="barra-titulo"><span>Teclado y atajos</span><button class="cerrar" data-cierra="panel-teclado">✕</button></div>
+    <div class="contenido-panel">
+      <div class="chips" id="chips-mods">
+        <button class="chip" data-mod="ctrl">Ctrl</button>
+        <button class="chip" data-mod="alt">Alt</button>
+        <button class="chip" data-mod="shift">Shift</button>
+        <button class="chip" data-mod="win">⊞ Win</button>
+      </div>
+      <div class="fila-texto">
+        <input id="campo-texto" placeholder="Escribe aquí y pulsa ▶ (acepta ñ, á, é…)">
+        <button id="btn-enviar-texto" class="boton-ico envio">▶</button>
+      </div>
+      <div class="fila-teclas" id="fila-funciones"></div>
+      <div class="grilla-teclas" id="grilla-teclas">
+        <button data-k="escape">Esc</button>
+        <button data-k="tab">Tab ⇥</button>
+        <button data-k="enter">Enter ⏎</button>
+        <button data-k="backspace">Borrar ⌫</button>
+        <button data-k="space">Espacio</button>
+        <button data-k="delete">Supr</button>
+        <button data-k="home">Inicio ⇤</button>
+        <button data-k="end">Fin ⇥</button>
+        <button data-k="pageup">Re Pág</button>
+        <button data-k="pagedown">Av Pág</button>
+        <button data-k="left">←</button>
+        <button data-k="down">↓</button>
+        <button data-k="up">↑</button>
+        <button data-k="right">→</button>
+        <button data-k="insert">Insert</button>
+        <button data-combo="alt+tab">Alt+Tab ◫</button>
+        <button data-combo="ctrl+shift+escape">Admin. Tareas</button>
+        <button data-combo="ctrl+alt+delete">Ctrl+Alt+Supr</button>
+        <button data-combo="win+d">Escritorio ⊞D</button>
+        <button data-combo="win+l">Bloquear ⊞L</button>
+        <button data-combo="win+e">Explorador ⊞E</button>
+        <button data-combo="win+r">Ejecutar ⊞R</button>
+        <button data-combo="alt+f4">Cerrar ventana Alt+F4</button>
+        <button data-combo="ctrl+s">Guardar Ctrl+S</button>
+      </div>
+    </div>
+  </aside>
+
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>

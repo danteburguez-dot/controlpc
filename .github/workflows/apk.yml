@@ -1,0 +1,72 @@
+# Compila la APK de Control PC con GitHub gratis — sin Android Studio.
+#
+# Dos maneras para el que entra a este proyecto:
+#   1) Actions → "APK" → Run workflow  → descarga el artefacto "controlpc-apk"
+#   2) Si activas la casilla "Publicar en Releases", la APK queda en la pestaña
+#      Releases del repo, disponible para CUALQUIER persona sin cuenta de GitHub.
+name: APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      crear_release:
+        description: "Publicar también en Releases (descarga pública)"
+        type: boolean
+        default: false
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+    paths: ["apk-flutter/**", ".github/workflows/apk.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el proyecto
+        uses: actions/checkout@v4
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Generar estructura de Android
+        run: |
+          cd apk-flutter
+          flutter create . --org com.controlpc.app --project-name controlpc --platforms=android
+          flutter pub get
+
+      - name: Compilar APK (release)
+        run: |
+          cd apk-flutter
+          flutter build apk --release
+
+      - name: Subir APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlpc-apk
+          path: apk-flutter/build/app/outputs/flutter-apk/app-release.apk
+
+  publicar:
+    needs: compilar
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' && github.event.inputs.crear_release == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar artefacto
+        uses: actions/download-artifact@v4
+        with:
+          name: controlpc-apk
+          path: apk
+
+      - name: Publicar en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Control PC — versión ${{ github.run_number }}
+          body: |
+            APK nativa de Control PC (Android 8+).
+            Instálala en el teléfono y conéctala al servidor que corre en tu PC (ver README).
+          files: apk/app-release.apk

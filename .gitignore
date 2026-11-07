@@ -1,0 +1,8 @@
+config.json
+sesiones.json
+__pycache__/
+*.pyc
+servidor/cert.pem
+servidor/clave.pem
+apk-flutter/.dart_tool/
+apk-flutter/build/
