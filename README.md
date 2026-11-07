@@ -173,13 +173,28 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
 ControlPC/
 ├── servidor/          servidor Python (Windows)
 │   ├── iniciar.bat      arranca el servidor (con auto-reinicio)
-│   ├── autoinicio.bat   comportamiento al encender la PC
-│   ├── servidor.py      todo el servidor (captura + eventos + estado)
+│   ├── iniciar_admin.bat  igual, pero como ADMINISTRADOR
+│   ├── autoinicio.bat   tarea simple al encender la PC
+│   ├── autoinicio_todos.bat  configura TODO el autoarranque
+│   ├── servidor.py      todo el servidor (captura + eventos + estado + audio + avisos)
 │   ├── requisitos.txt   librerías a instalar
 │   └── estatico/        la PWA del teléfono (HTML/JS/CSS)
 ├── apk-flutter/       proyecto APK nativo (opcional)
 └── .github/workflows/apk.yml   compila la APK en GitHub gratis
 ```
+
+## 🔔 Novedades incluidas
+
+- **Avisos del sistema en el teléfono**: batería baja/cargando, RAM al límite,
+  disco casi lleno, CPU sostenida alta y conexión/desconexión del teléfono
+  aparecen como notificaciones flotantes en la app (con lista en el panel 📊).
+- **Audio en vivo de la PC**: botón 🔊 junto al estado → *"Escuchar el sonido de la PC"*
+  (captura loopback, ~48 kHz) más control de volumen y silencio.
+- **Ventanas de seguridad (UAC)**: cuando aparece una ventana de permisos en la PC,
+  el teléfono recibe una notificación con **✅ Permitir** (activa el modo silencioso,
+  los avisos dejan de molestar) y **🚫 Rechazar** (cierra la ventana, requiere
+  `iniciar_admin.bat`). Nota de Windows: la ventana de UAC en sí no se puede clicar
+  remotamente (escritorio seguro); por eso "rechazar" la mata y "permitir" la evita a futuro.
 
 ## 🤝 Contribuir
 
