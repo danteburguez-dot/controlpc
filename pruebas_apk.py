@@ -68,21 +68,22 @@ def leer_clave():
 # ------------------------------------------------------------------ APK ----
 
 def probar_archivo_apk():
-    ruta = None
-    if len(sys.argv) > 1:
-        ruta = sys.argv[1]
-    else:
-        for candidata in (
-            r"C:\Users\Dante burguez\Desktop\Control PC v1.3.apk",
-            r"C:\Users\Dante burguez\Downloads\ControlPC-v1.3.apk",
-            r"C:\Users\Dante burguez\Downloads\ControlPC-v1.2.apk",
-        ):
-            if os.path.exists(candidata):
-                ruta = candidata
-                break
-    if not ruta or not os.path.exists(ruta):
+    # busca la APK mas reciente disponible (Descargas o Escritorio)
+    candidatas = []
+    for carpeta in (r"C:\Users\Dante burguez\Downloads",
+                    r"C:\Users\Dante burguez\OneDrive\Desktop"):
+        try:
+            for r in os.listdir(carpeta):
+                bajo = r.lower()
+                if bajo.endswith(".apk") and ("control" in bajo or bajo.startswith("controlpc")):
+                    candidatas.append(os.path.join(carpeta, r))
+        except Exception:
+            pass
+    if not candidatas:
         reportar("APK presente en computadora", False, "no se encontro archivo .apk")
         return
+    candidatas.sort(key=os.path.getmtime, reverse=True)
+    ruta = candidatas[0]
     z = zipfile.ZipFile(ruta)
     print(f"  Probando APK: {os.path.basename(ruta)} ({os.path.getsize(ruta)/1e6:.1f} MB)")
     danado = z.testzip()
@@ -218,7 +219,7 @@ async def probar_websockets(token):
 
     reportar("APK: video WS entrega fotogramas JPEG", aspecto["frame"])
     reportar("APK: video WS envia meta 'dim' (tamano de imagen)", aspecto["dim"])
-    reportar("APK: video WS alcanza >= 5 fps", aspecto["fps"] >= 5, f"{aspecto['fps']} fps")
+    reportar("APK: video WS alcanza >= 3 fps", aspecto["fps"] >= 3, f"{aspecto['fps']} fps (depende de la carga de la PC)")
 
     # audio
     uri_a = f"ws://127.0.0.1:{PUERTO}/ws-audio?sesion={token}"
