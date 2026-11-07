@@ -139,12 +139,15 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
   en la misma red puede conectarse. Para acceder desde fuera de casa se usa **Tailscale**,
   que solo autoriza a los dispositivos de tu propia cuenta que TÚ apruebes.
 - Existen límites antifuerza bruta (bloqueo tras 8 intentos fallidos por minuto).
+- **Ciclo de 90 días:** por seguridad la contraseña se **renueva automáticamente** cada 90 días.
+  Al hacerlo, la clave nueva se muestra en la PC (consola + ventana emergente, también al
+  arrancar con `autoinicio.bat`) y las sesiones anteriores se invalidan: vuelve a escribir
+  la clave en el teléfono. El panel 📊 Estado mostra cuántos días de ciclo quedan.
 - Puedes cambiar la contraseña cuando quieras editando `servidor/config.json` y reiniciar
   el servidor. Borrar esos archivos no rompe nada: se regeneran automáticamente.
 
 - Sin HTTPS por defecto: úsalo **en redes de confianza**. Para acceso remoto,
   Tailscale cifra todo el camino (equivalente/versión superior a HTTPS doméstico).
-- Puedes cambiar la contraseña editando `servidor/config.json` y reiniciando el servidor.
 - Para exponer directo a internet (nada recomendado) necesitarías un túnel con HTTPS
   (Cloudflare Tunnel / cert + `cert.pem`/`clave.pem` — el servidor los usa si existen).
 
