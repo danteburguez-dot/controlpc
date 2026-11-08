@@ -19,7 +19,7 @@ import "package:shared_preferences/shared_preferences.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
-const String VERSION_APP = "1.7";
+const String VERSION_APP = "1.8";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -106,6 +106,20 @@ class _ControlPCAppState extends State<ControlPCApp> {
 
   /// Devuelve null si entró bien; si falló, el mensaje del error.
   Future<String?> _entrar(String host, int puerto, String clave) async {
+    // --- PASO 1: prueba TCP cruda (sin HTTP) — muestra el error EXACTO del sistema ---
+    String? tcpFallo;
+    try {
+      final s = await Socket.connect(host, puerto,
+          timeout: const Duration(seconds: 5));
+      s.destroy();
+    } catch (e) {
+      tcpFallo = e.toString();
+    }
+    if (tcpFallo != null) {
+      return "❌ TCP no alcanza $host:$puerto\nDetalle: $tcpFallo";
+    }
+
+    // --- PASO 2: intento HTTP con detalle del fallo ---
     try {
       final r = await http
           .post(
@@ -126,8 +140,8 @@ class _ControlPCAppState extends State<ControlPCApp> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(Conexion.clavePrefs, "${c.host}|${c.puerto}|${c.token}");
       return null;
-    } catch (_) {
-      return "No se pudo conectar: revisa IP, que el servidor esté abierto y que el Firewall de la PC tenga la regla \"Control PC\" (el .bat iniciar_admin.bat la agrega)";
+    } catch (e) {
+      return "❌ HTTP falló\nDetalle: $e\n\n(Si dice \"Cleartext not permitted\", actualiza a otra versión)";
     }
   }
 

@@ -1,7 +1,7 @@
 name: controlpc
 description: Control PC — controla tu computadora desde el teléfono (pantalla en vivo, ratón, teclado, avisos, volumen y sonido en vivo).
 publish_to: "none"
-version: 1.7.0+1
+version: 1.8.0+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

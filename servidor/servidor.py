@@ -59,7 +59,7 @@ ESTATICO = BASE / "estatico"
 ARCHIVO_CONFIG = BASE / "config.json"
 
 PUERTO_DEF = 8566
-VERSION_APP = "1.7"
+VERSION_APP = "1.8"
 REPO_PUBLICO = "https://api.github.com/repos/danteburguez-dot/controlpc/releases/latest"
 # nivel -> (ancho máximo, calidad JPEG)
 CALIDADES = {0: (960, 45), 1: (1280, 55), 2: (1600, 68), 3: (1920, 78)}
@@ -1670,7 +1670,7 @@ if __name__ == "__main__":
     clave = BASE / "clave.pem"
     if cert.exists() and clave.exists():
         uvicorn.run(app, host="0.0.0.0", port=int(CFG.get("puerto", PUERTO_DEF)),
-                    ssl_certfile=str(cert), ssl_keyfile=str(clave), log_level="warning")
+                    ssl_certfile=str(cert), ssl_keyfile=str(clave), log_level="info", access_log=True)
     else:
         uvicorn.run(app, host="0.0.0.0", port=int(CFG.get("puerto", PUERTO_DEF)),
-                    log_level="warning")
+                    log_level="info", access_log=True)

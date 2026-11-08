@@ -69,6 +69,19 @@ jobs:
             sed -i -E 's/compileSdk(Version)?( )?=?( )?33/compileSdkVersion 36/g' "$fdim/android/build.gradle" || true
             grep -E "compileSdk" "$fdim/android/build.gradle" || true
           fi
+          # MUY IMPORTANTE: network security config (solucion recomendada por Flutter/Android 9+)
+          if [ ! -f apk-flutter/android/app/src/main/res/xml/network_security_config.xml ]; then
+            mkdir -p apk-flutter/android/app/src/main/res/xml
+            cat > apk-flutter/android/app/src/main/res/xml/network_security_config.xml <<'EOFX'
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
+EOFX
+          fi
+          if ! grep -q "networkSecurityConfig" android/app/src/main/AndroidManifest.xml; then
+            sed -i '0,/<application/s//<application\n    android:networkSecurityConfig="@xml\/network_security_config"/' android/app/src/main/AndroidManifest.xml
+          fi
           # MUY IMPORTANTE: permite http en claro (el servidor de la casa es http://)
           for MAN in android/app/src/main/AndroidManifest.xml; do
             if [ -f "$MAN" ] && ! grep -q "usesCleartextTraffic" "$MAN"; then
