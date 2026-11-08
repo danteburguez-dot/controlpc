@@ -15,7 +15,7 @@
 
 | Archivo | Qué hace | ¿Doble clic? |
 |---|---|---|
-| **`CONTROL-PC.bat`** | ⭐ **MENÚ MAESTRO — el ÚNICO `.bat`**: servidor [1], admin [2], login+QR [3], firewall [4], autoarranque [5], Tailscale [6], auditoría [7], hotspot [8] e **instalador de Python [9]** (todo fusionado adentro: ya no hay `.bat` separados) | ✅ la forma más cómoda de usar todo |
+| **`CONTROL-PC.bat`** | ⭐ **MENÚ MAESTRO — el ÚNICO `.bat`**: servidor [1], admin [2], login+QR [3], firewall [4], autoarranque [5], Tailscale [6], auditoría [7], hotspot [8] e **INSTALAR TODO [9]** (Python + las 12 librerías; todo fusionado adentro: ya no hay `.bat` separados) | ✅ la forma más cómoda de usar todo |
 | `config.json` | guarda tu contraseña y ajustes (no se borra al actualizar) | no tocar |
 
 > La contraseña la ves en la **consola** al arrancar, o con la opción **[3]**
@@ -69,7 +69,7 @@ por si acaso; **esta es la razón número 1** por la que "no conecta" aún.)
 | **[6]** | 🌍 **Tailscale**: lo instala si falta, entra a tu cuenta y muestra la IP `100.x.y.z` + QR — acceso **desde cualquier lugar del mundo**. |
 | **[7]** | 🕵️ **Auditoría de paquetes**: 90 s grabando los intentos de conexión del teléfono → deja el resultado en `servidor\eventos_8566.txt`. |
 | **[8]** | 📶 **HOTSPOT** automático de Windows: el teléfono entra directo a la red de la PC **sin router**. |
-| **[9]** | 🐍 **Instala la ÚLTIMA versión de Python**: con `winget`, y si no está, descarga el instalador oficial e instala silencioso con *"Add to PATH"*. |
+| **[9]** | 📦 **INSTALAR TODO en una PC nueva**: pone la última versión de **Python** (winget, o el instalador oficial con *"Add to PATH"* — refrescando el PATH de la misma ventana) **+ las 12 librerías** de `requisitos.txt` (fastapi, uvicorn, mss, Pillow, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, pywin32) y comprueba que todo importe. Con esto la PC queda lista para usar [1]. |
 
 - Los modos especiales `--loginqr`, `--tailscale` y `--rotar` de `servidor.py` son los que el maestro ejecuta internamente.
 
@@ -346,7 +346,7 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
 ```
 ControlPC/
 ├── servidor/              servidor Python (Windows)
-│   ├── CONTROL-PC.bat     ⭐ MENÚ MAESTRO — el único .bat (opciones 1–9)
+│   ├── CONTROL-PC.bat     ⭐ MENÚ MAESTRO — el único .bat (opciones 1–9, [9] = INSTALAR TODO)
 │   ├── regla_firewall.ps1  helper del Firewall
 │   ├── servidor.py        todo el servidor (captura + eventos + estado + audio + avisos)
 │   ├── requisitos.txt     librerías a instalar

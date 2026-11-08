@@ -6,3 +6,6 @@ servidor/cert.pem
 servidor/clave.pem
 apk-flutter/.dart_tool/
 apk-flutter/build/
+servidor/salida_servidor.txt
+servidor/eventos_8566.txt
+servidor/hotspot_state.txt

@@ -37,7 +37,7 @@ echo   [5] Autoarranque completo (server al encender la PC)
 echo   [6] Tailscale: acceso desde CUALQUIER lugar del mundo
 echo   [7] Auditoria de paquetes (ve que bloquea al telefono)
 echo   [8] HOTSPOT automatico (lleva el telefono a la red del PC, SIN ROUTER)
-echo   [9] Instalar la ULTIMA version de Python (para una PC nueva)
+echo   [9] INSTALAR TODO: Python + las 12 librerias (PC nueva lista en un clic)
 echo   [0] Salir
 echo.
 set "OPC="
@@ -50,7 +50,7 @@ if "%OPC%"=="5" goto :auto
 if "%OPC%"=="6" goto :tscale
 if "%OPC%"=="7" goto :auditia
 if "%OPC%"=="8" goto :hotsp
-if "%OPC%"=="9" goto :pyinst
+if "%OPC%"=="9" goto :instalar_todo
 if "%OPC%"=="0" exit /b 0
 goto :menu
 
@@ -317,28 +317,56 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%BASE%hotspot_auto.ps1"
 pause
 goto :menu
 
-:pyinst
+:instalar_todo
+cd /d "%BASE%"
 echo ============================================================
-echo    DESCARGANDO LA ULTIMA VERSION DE PYTHON
+echo    INSTALAR TODAS LAS DEPENDENCIAS DE CONTROL PC
+echo     (Python + las 12 librerias del servidor)
 echo ============================================================
 echo.
-where winget >nul 2>&1
-if errorlevel 1 goto :py_sin_winget
-echo [1/2] Instalando con winget (puede demorar unos minutos)...
+echo [1/3] Poniendo Python...
+where python >nul 2>nul
+if not errorlevel 1 (
+  echo       Python ya esta instalado:
+  python --version
+  goto dep_libs
+)
+where winget >nul 2>nul
+if errorlevel 1 goto dep_py_api
 winget install -e --id Python.Python.3 --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
-goto :py_fin
+goto dep_py_path
 
-:py_sin_winget
-echo [1/2] winget no esta; descargando el instalador oficial...
+:dep_py_api
 powershell -NoProfile -Command "$f=[IO.Path]::Combine([IO.Path]::GetTempPath(),'python-setup.exe'); $v=(irm 'https://endoflife.date/api/python.json')[0].latest; Write-Host ('Version mas nueva: ' + $v); iwr -UseBasicParsing ('https://www.python.org/ftp/python/'+$v+'/python-'+$v+'-amd64.exe') -OutFile $f; & $f /quiet InstallAllUsers=0 PrependPath=1 Include_test=0"
-echo [2/2] Instalacion silenciosa terminada.
 
-:py_fin
+:dep_py_path
+REM refresca el PATH de ESTA ventana (el instalador cambio el del sistema)
+for /d %%d in ("%LOCALAPPDATA%\Programs\Python\Python3*") do set "PATH=%PATH%;%%d;%%d\Scripts"
+for /d %%d in ("%ProgramFiles%\Python3*") do set "PATH=%PATH%;%%d;%%d\Scripts"
+where python >nul 2>nul
+if errorlevel 1 (
+  echo [X] Python no se me ve. Cierra el maestro y abre de nuevo.
+  pause
+  goto :menu
+)
+echo [OK] Python listo:
+python --version
+
+:dep_libs
+echo [2/3] Instalando las 12 librerias del servidor (demora unos minutos)...
+python -m pip install --upgrade pip --quiet --no-input
+python -m pip install -r "%BASE%requisitos.txt" --no-input
+echo [3/3] Comprobando que todo importe...
+python -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api"
+if errorlevel 1 (
+  echo [X] Fallo algo de arriba. Corre este mismo [9] otra vez.
+  pause
+  goto :menu
+)
 echo.
 echo ==================================================
-echo   PYTHON INSTALADO. Reabre este menu (o abre
-echo   una ventana de cmd nueva) para que quede
-echo   en el PATH y el servidor pueda usarse.
+echo   TODO LISTO. Esta PC ya puede correr el
+echo   servidor: usa la opcion [1] (o [2] admin).
 echo ==================================================
 pause
 goto :menu
