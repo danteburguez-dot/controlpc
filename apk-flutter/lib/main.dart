@@ -17,9 +17,10 @@ import "package:open_filex/open_filex.dart";
 import "package:path_provider/path_provider.dart";
 import "package:shared_preferences/shared_preferences.dart";
 import "package:url_launcher/url_launcher.dart";
+import "package:wakelock_plus/wakelock_plus.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
-const String VERSION_APP = "1.9";
+const String VERSION_APP = "1.10";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -333,9 +334,23 @@ class _PantallaHomeState extends State<PantallaHome> {
   Map<String, dynamic>? datos;
   Timer? reloj;
   int ultimoAvisoId = 0;
+  bool soloPantalla = false;
 
   Future<void> _entradaApi(Map<String, Object?> evento) async {
     await apiPost(widget.conexion, "/api/entrada", evento);
+  }
+
+  void _viaPantallaCompleta(bool on) {
+    setState(() => soloPantalla = on);
+    SystemChrome.setEnabledSystemUIMode(
+        on ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations(on
+        ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
+        : [DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    try { WakelockPlus.toggle(on: on); } catch (_) {}
+    if (!on) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    }
   }
 
   @override
@@ -442,6 +457,27 @@ class _PantallaHomeState extends State<PantallaHome> {
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+
+    // MODO PANTALLA COMPLETA (solo la PC, horizontal, sin nada más)
+    if (soloPantalla) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _viaPantallaCompleta(false);
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF05070C),
+          body: PantallaVideo(
+            conexion: widget.conexion,
+            entrada: _entradaApi,
+            solo: true,
+            servicioAudio: _servicioAudio,
+            alSalidaCompleta: () => _viaPantallaCompleta(false),
+          ),
+        ),
+      );
+    }
+
     return DefaultTabController(
       length: 4,
       child: Scaffold(
@@ -601,7 +637,11 @@ class PantallaVideo extends StatefulWidget {
   final Conexion conexion;
   final Future<void> Function(Map<String, Object?>) entrada;
   final bool tecladoHw;
-  const PantallaVideo({super.key, required this.conexion, required this.entrada, this.tecladoHw = true});
+  final bool solo;
+  final ServicioAudio? servicioAudio;
+  final VoidCallback? alSalidaCompleta;
+  const PantallaVideo({super.key, required this.conexion, required this.entrada,
+    this.tecladoHw = true, this.solo = false, this.servicioAudio, this.alSalidaCompleta});
   @override
   State<PantallaVideo> createState() => _PantallaVideoState();
 }
@@ -934,55 +974,94 @@ class _PantallaVideoState extends State<PantallaVideo> {
       IconButton(
         icon: Icon(completo ? Icons.fullscreen_exit : Icons.fullscreen),
         onPressed: () {
-          completo = !completo;
+          final nuevo = !completo;
+          setState(() => completo = nuevo);
+          widget.alSalidaCompleta?.call(nuevo);
           SystemChrome.setEnabledSystemUIMode(
-            completo ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+            nuevo ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
           );
-          setState(() {});
         },
       ),
     ]);
-    return Column(
-      children: [
-        if (!completo) behavedControls(botones),
-        Expanded(
-          child: KeyboardListener(
-            focusNode: nodoTeclado,
-            autofocus: true,
-            onKeyEvent: teclaKey,
-            child: fotograma == null
-                ? Center(child: Text(estado + "\n\n⌨️ si conectas un teclado al teléfono, tóca la pantalla una vez y escriba directo en la PC", textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white54)))
-                : LayoutBuilder(builder: (context, cajas) {
-                    final tamano = Size(cajas.maxWidth, cajas.maxHeight);
-                    final dibujar = Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: (e) => _abajo(e, tamano),
-                      onPointerMove: (e) => _sobreMover(e, tamano),
-                      onPointerUp: (e) => _arriba(e, tamano),
-                      onPointerCancel: (e) => _cancela(e, tamano),
-                      child: SizedBox.expand(
-                        child: Transform(
-                          alignment: Alignment.center,
-                          transform: Matrix4.identity()
-                            ..translate(desplaza.dx, desplaza.dy)
-                            ..scale(zoom),
-                          child: Image.memory(fotograma!, fit: BoxFit.contain,
-                            gaplessPlayback: true),
+    return Stack(children: [
+      Positioned.fill(
+        child: Column(children: [
+          if (!completo && !widget.solo) behavedControls(botones),
+          Expanded(
+            child: KeyboardListener(
+              focusNode: nodoTeclado,
+              autofocus: true,
+              onKeyEvent: teclaKey,
+              child: fotograma == null
+                  ? Center(
+                      child: Text(
+                        estado +
+                            (widget.solo || completo
+                                ? ""
+                                : "\n\n.si conectas un teclado al telefono, toca la pantalla una vez y escribe directo en la PC"),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white54)))
+                  : LayoutBuilder(builder: (context, cajas) {
+                      final tamano = Size(cajas.maxWidth, cajas.maxHeight);
+                      // el video ocupa TODO; los bordes se ajustan con zoom/pan
+                      return Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: (e) => _abajo(e, tamano),
+                        onPointerMove: (e) => _sobreMover(e, tamano),
+                        onPointerUp: (e) => _arriba(e, tamano),
+                        onPointerCancel: (e) => _cancela(e, tamano),
+                        child: SizedBox.expand(
+                          child: Transform(
+                            alignment: Alignment.center,
+                            transform: Matrix4.identity()
+                              ..translate(desplaza.dx, desplaza.dy)
+                              ..scale(zoom),
+                            child: Image.memory(fotograma!,
+                                fit: BoxFit.cover, gaplessPlayback: true),
+                          ),
                         ),
-                      ),
-                    );
-                    return dibujar;
-                  }),
+                      );
+                    }),
+            ),
+          ),
+          if (!completo && !widget.solo)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(estado,
+                  style: const TextStyle(fontSize: 11, color: Colors.white38)),
+            ),
+        ]),
+      ),
+      if (completo || widget.solo)
+        Positioned(
+          top: 8,
+          right: 8,
+          child: Opacity(
+            opacity: 0.35,
+            child: IconButton.filledTonal(
+              icon: const Icon(Icons.fullscreen_exit, size: 20),
+              onPressed: () {
+                setState(() => completo = false);
+                widget.alSalidaCompleta?.call(false);
+                SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+                SystemChrome.setPreferredOrientations([
+                  DeviceOrientation.portraitUp,
+                  DeviceOrientation.landscapeLeft,
+                  DeviceOrientation.landscapeRight,
+                ]);
+                try { WakelockPlus.toggle(on: false); } catch (_) {}
+              },
+            ),
           ),
         ),
-        if (!completo)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Text(estado, style: const TextStyle(fontSize: 11, color: Colors.white38)),
-          ),
-      ],
-    );
+      if ((completo || widget.solo) && (widget.servicioAudio?.escuchando ?? false))
+        const Positioned(
+          top: 8,
+          left: 8,
+          child: Icon(Icons.surround_sound,
+              color: Color(0xFF2DD4A7), size: 18),
+        ),
+    ]);
   }
 
   Widget behavedControls(Widget hijo) {
