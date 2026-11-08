@@ -8,7 +8,7 @@ de la PC en tu teléfono y la controlas con los dedos, ves el estado del sistema
 
 ## 1. Arrancar el servidor en la PC
 
-1. Doble clic en **`servidor\iniciar.bat`**.
+1. Doble clic en **`servidor\CONTROL-PC.bat`** (menu maestro) y elige **[1]**.
    - La primera vez instala las librerías (unos 2 minutos) y luego queda corriendo.
 2. Aparecerá una ventana con un **código QR y una dirección**, por ejemplo:
 
@@ -76,21 +76,21 @@ se va de internet, la PC y el teléfono siguen conectados:
 
 ## 6. Que el servidor arranque siempre (PC lista siempre que la necesites)
 
-- Doble clic en **`servidor\autoinicio.bat`** una sola vez: crea un acceso directo
-  en el inicio de Windows. Cada vez que enciendas o reinicies la PC, el servidor
-  ya estará esperándote (queda minimizado).
-- Si el servidor llegara a cerrarse, `iniciar.bat` lo reinicia automáticamente cada 3 s.
+- Doble clic en **`servidor\CONTROL-PC.bat`** una sola vez y elige **[5]**: crea una
+  tarea de autoarranque del servidor ADMINISTRADOR con respaldo. Cada vez que
+  enciendas o reinicies la PC, el servidor ya estará esperándote (queda minimizado).
+- Si el servidor llegara a cerrarse, el maestro **[1]** lo reinicia automáticamente cada 3 s.
 
 ## 7. Seguridad
 
 - La **contraseña** es obligatoria y se guarda en `servidor\config.json`.
-  Puedes cambiarla editando ese archivo y reiniciando `iniciar.bat`.
-- **Doble clic en `login.bat`** para ver la contraseña actual EN GRANDE y los
+  Puedes cambiarla editando ese archivo y reiniciando el maestro **[1]**.
+- **En el maestro [3]** ves la contraseña actual EN GRANDE y los
   **dos códigos QR** de conexión: el **RÁPIDO** (lleva la clave incluida — escanea la
   cámara y el teléfono entra sin escribir nada) y el **NORMAL** (pide la clave).
   Como el QR rápido incluye la clave, **cambia solo** cuando la clave cambia.
   Si abajo respondes **Y** a *"Quiere obtener una nueva contraseña? Y/N*" se
-  renueva al instante, se cortan todas las sesiones y vuelve a mostrar pantaila
+  renueva al instante, se cortan todas las sesiones y vuelve a mostrar pantalla
   con la nueva clave y su QR nuevo.
 - Cada **90 días** cambia sola (te aparece una ventana en la PC con la nueva).
 - Cada sesión dura 90 días; después pide la clave de nuevo.
@@ -113,5 +113,5 @@ La APK nativa guarda la IP/contraseña en el teléfono y arranca directo, sin na
 | "No se pudo contactar al servidor" | El firewall de Windows bloqueó el puerto: en la ventana de permiso de Windows acepta "Redes privadas y públicas", o abre el puerto 8566 en el firewall. |
 | Película/imagen congelada | La calidad "máxima" requiere mucho: baja la calidad en ⚙️ Ajustes, o revisa la potencia Wi-Fi. |
 | No aparece la opción "Instalar aplicación" en Chrome | Solo está disponible con HTTPS. Aun así puedes **Añadir a pantalla de inicio** (funciona igual, no es "app instalada"), o usa la APK nativa. |
-| No quiero que la PC se controle | Borra `servidor\autoinicio.bat` atajo del inicio y no ejecutes `iniciar.bat`. |
+| No quiero que la PC se controle | Elimina la tarea "ControlPC Servidor Admin" (`schtasks /Delete /TN "ControlPC Servidor Admin" /F`) y el atajo "Control PC - respaldo" en shell:startup, y no corras el maestro. |
 | ¿La PC queda lenta? | La captura usa pocos recursos; si quieres cierras `python.exe` cuando no lo uses (o no lo pongas en autoinicio). |

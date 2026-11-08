@@ -15,17 +15,11 @@
 
 | Archivo | Qué hace | ¿Doble clic? |
 |---|---|---|
-| **`CONTROL-PC.bat`** | ⭐ **MENÚ MAESTRO** — un solo `.bat` con TODAS las opciones (servidor, admin, login, firewall, autoarranque, Tailscale, auditoría) | ✅ la forma más cómoda de usar todo |
-| **`1-permitir_telefono.bat`** | 🔥 **CORRELO PRIMERO**: agrega la **regla del Firewall** para que el teléfono pueda entrar (sin esto, la APK dirá "No se pudo conectar") | ✅ una sola vez, acepta el permiso |
-| `iniciar.bat` | **abre el servidor** (lo común) | ✅ primera vez instala librerías y muestra IP + contraseña + QR |
-| `iniciar_admin.bat` | lo mismo pero como ADMINISTRADOR (permite 🚫 rechazar UAC desde el teléfono) | opcional |
-| `login.bat` | muestra la contraseña actual + **2 QR por cada red disponible** (rápido y normal) — con **Y** renueva la clave y el QR | cuando quieras |
-| `autoinicio_todos.bat` | deja configurado que **arranque solo** al encender la PC | una sola vez |
-| `activar_tailscale.bat` | instala/conecta **Tailscale** y te imprime la IP 100.x + QR para acceso **desde cualquier lugar del mundo** | una vez por PC |
-| `2-auditoria.bat` | 🕵️ **auditoría de paquetes**: Windows graba y reporta los intentos de conexión del teléfono (para diagnosticar bloqueos) | solo para diagnóstico |
+| **`CONTROL-PC.bat`** | ⭐ **MENÚ MAESTRO — el ÚNICO `.bat`**: servidor [1], admin [2], login+QR [3], firewall [4], autoarranque [5], Tailscale [6], auditoría [7], hotspot [8] e **instalador de Python [9]** (todo fusionado adentro: ya no hay `.bat` separados) | ✅ la forma más cómoda de usar todo |
 | `config.json` | guarda tu contraseña y ajustes (no se borra al actualizar) | no tocar |
 
-> La contraseña la ves en la **consola** al arrancar, o con `login.bat` (con los
+> La contraseña la ves en la **consola** al arrancar, o con la opción **[3]**
+> del `CONTROL-PC.bat` (con los
 > QR para conectar el teléfono a un toque: el QR rápido lleva la clave dentro y
 > cambia solo cuando la clave cambia).
 > Windows te pedirá "Permitir acceso" la primera vez: acepta (con *redes privadas*).
@@ -35,14 +29,14 @@
 Windows **bloquea** las conexiones entrantes por defecto. Si la APK te dice
 *"No se pudo conectar: ... el Firewall de la PC tenga la regla Control PC"*:
 
-1. Doble clic en **`1-permitir_telefono.bat`**.
+1. Doble clic en **`CONTROL-PC.bat`** y elige la opción **[4] FIREWALL**.
 2. Acepta la ventana amarilla de Windows (botón **Sí**).
 3. Saldrá *"REGLA CREADA"* — ahora el teléfono entra sin problema.
 
-(Solo una vez por PC. Los `.bat` `iniciar_admin.bat` / `1-permitir_telefono.bat`
-hacen esto solo; **esta es la razón número 1** por la que "no conecta" aún.)
+(Solo una vez por PC. Crea la regla del puerto 8566 **y la de `python.exe`**
+por si acaso; **esta es la razón número 1** por la que "no conecta" aún.)
 
-## 🦇 Guía completa de los archivos `.bat` (hay un **MENÚ MAESTRO** que los agrupa)
+## 🦇 Guía del MENÚ MAESTRO (`CONTROL-PC.bat` — todos adentro)
 
 ### ⭐ `CONTROL-PC.bat` — 🎛️ "CONTROL PC - MAESTRO" (todo en uno)
 - Un solo `.bat` con **menú interactivo**:
@@ -61,50 +55,23 @@ hacen esto solo; **esta es la razón número 1** por la que "no conecta" aún.)
   ```
 - Si prefieres los `.bat` individuales: siguen existiendo y funcionan igual.
 
-### 1️⃣ `iniciar.bat` — 🖥️ "Control PC - Servidor"
-- Doble clic = abre el servidor.
-- Muestra: dirección, contraseña, y los 2 QR (rápido y normal).
-- La primera vez instala las librerías.
-- Si el servidor se cae, se reinicia solo cada 3 s.
-- Si ya hay otra instancia corriendo → sale limpio sin duplicar.
+- **Todas las funciones están fusionadas DENTRO del maestro**: ya no existen `.bat` separados.
 
-### 2️⃣ `iniciar_admin.bat` — 🛡️ "Control PC - Administrador"
-- Igual que el 1️⃣ pero como ADMINISTRADOR (aceptas su ventana una vez).
-- Fija la regla del Firewall de una vez para no volver a preguntar.
-- Necesario para poder 🚫 Rechazar las ventanas UAC desde el teléfono.
+### 🎛️ Qué hace cada opción del `CONTROL-PC.bat`
 
-### 3️⃣ `login.bat` — 🔑 "Control PC - Login (contrasena)"
-- Pantalla de LOGIN: muestra la contraseña actual, el ciclo restante, y los
-  **2 QR de conexión por cada red disponible** (Wi-Fi, hotspot de la PC, VPN,
-  Tailscale...). El QR **RÁPIDO lleva la clave dentro**: escanéalo con la cámara
-  y el teléfono entra sin escribir nada (ideal para tus equipos). El QR
-  **NORMAL** pide la contraseña (ideal para otras personas viendo tu pantalla).
-- Aquí abajo pregunta: `Quiere obtener una nueva contrasena? Y/N`
-- **Y** → renueva la clave, corta TODAS las sesiones y re-muestra la nueva
-  con su QR nuevo (los QR cambian solos: llevan la clave dentro).
-- **N** → no toca nada.
-- El banner al arrancar el servidor muestra la misma lista multi-red.
+| Opción | Qué hace |
+|---|---|
+| **[1]** | 🖥️ **Servidor normal**: la primera vez instala las librerías y muestra IP + contraseña + los 2 QR; si se cae se reinicia solo cada 3 s; si ya corre otra instancia, sale limpio sin duplicar. |
+| **[2]** | 🛡️ **Servidor ADMINISTRADOR**: como [1] pero elevado (necesario para 🚫 rechazar UAC desde el teléfono) y fija la regla del Firewall de una vez. |
+| **[3]** | 🔑 **Login + QR**: contraseña actual, ciclo restante y **2 QR por cada red** activa (Wi-Fi, hotspot, VPN, Tailscale…). El QR **RÁPIDO lleva la clave dentro**; escribiendo **Y** renueva la clave y corta todas las sesiones. |
+| **[4]** | 🔥 **Firewall**: crea la regla del puerto 8566 **y la regla de programa para `python.exe`** (una vez, acepta el permiso). |
+| **[5]** | 📌 **Autoarranque completo**: tarea programada del servidor ADMINISTRADOR + respaldo de 60 s si el admin no pudiera arrancar. |
+| **[6]** | 🌍 **Tailscale**: lo instala si falta, entra a tu cuenta y muestra la IP `100.x.y.z` + QR — acceso **desde cualquier lugar del mundo**. |
+| **[7]** | 🕵️ **Auditoría de paquetes**: 90 s grabando los intentos de conexión del teléfono → deja el resultado en `servidor\eventos_8566.txt`. |
+| **[8]** | 📶 **HOTSPOT** automático de Windows: el teléfono entra directo a la red de la PC **sin router**. |
+| **[9]** | 🐍 **Instala la ÚLTIMA versión de Python**: con `winget`, y si no está, descarga el instalador oficial e instala silencioso con *"Add to PATH"*. |
 
-### 4️⃣ `autoinicio.bat` — 📌 "Control PC - Autoarranque simple"
-- Crea acceso directo en el Inicio de Windows para que el servidor se abra
-  al encender (silencioso/minimizado).
-- Sin ventanas de contraseña, solo arranca.
-
-### 5️⃣ `autoinicio_todos.bat` — 📌 "Control PC - Autoarranque completo" (recomendado)
-- Todo lo del 4️⃣ + tarea programada del servidor ADMINISTRADOR (arranca
-  elevado al iniciar sesión, sin preguntar).
-- Configura también respaldo retardado si el admin no pudiera arrancar.
-- Se ejecuta una sola vez; para revertir:
-  `schtasks /Delete /TN "ControlPC Servidor Admin" /F` y borra el atajo
-  en `shell:startup`.
-
-### 6️⃣ `activar_tailscale.bat` — 🌍 "Control PC - Tailscale (cualquier lugar)"
-- Instala Tailscale (gratis) si falta y abre tu navegador para el login de
-  cuenta (Google/GitHub…).
-- IMPORTANTE: en el teléfono instala la app Tailscale y entra con LA MISMA cuenta.
-- Al terminar muestra la IP `100.x.y.z` de tu PC y un QR: escanéalo y conectas
-  desde CUALQUIER red del mundo (incluso PC y teléfono en redes distintas, datos
-  móviles, otro país). También accesible como `python servidor.py --tailscale`.
+- Los modos especiales `--loginqr`, `--tailscale` y `--rotar` de `servidor.py` son los que el maestro ejecuta internamente.
 
 ### 📱 Para el teléfono (Android)
 
@@ -126,12 +93,7 @@ hacen esto solo; **esta es la razón número 1** por la que "no conecta" aún.)
 ```
 ControlPC/
 ├── servidor/
-│   ├── 1-permitir_telefono.bat ← 🔥 PC: correlo PRIMERO (permite el teléfono en el Firewall)
-│   ├── iniciar.bat             ← PC: doble clic aquí
-│   ├── iniciar_admin.bat       ← PC: versión administrador
-│   ├── login.bat               ← PC: ver/renovar contraseña (Y/N) + QRs por red
-│   ├── activar_tailscale.bat   ← PC: acceso desde cualquier lugar del mundo
-│   ├── autoinicio_todos.bat    ← PC: autoarranque completo
+│   ├── CONTROL-PC.bat          ← PC: ⭐ MENÚ MAESTRO (el único .bat: enciende TODO)
 │   ├── servidor.py             ← motor del servidor
 │   └── estatico/               ← interfaz web del teléfono
 ├── pruebas_apk.py              ← 20 pruebas automáticas (20/20 = todo sano)
@@ -143,7 +105,7 @@ ControlPC/
 
 ### �viamente 1) En la PC (Windows)
 - Requisito: [Python 3.10+](https://www.python.org/downloads/) (marca *"Add python.exe to PATH"*).
-- Doble clic en `servidor\iniciar.bat` — la primera vez instala las librerías.
+- Doble clic en `servidor\CONTROL-PC.bat` → opción **[1]** — la primera vez instala las librerías.
 - Acepta el permiso del **Firewall de Windows** que aparecerá (casilla de *redes privadas* marcada).
 - Aparecerá una ventana con código QR, la **dirección** y la **contraseña aleatoria**:
 
@@ -260,7 +222,7 @@ Con el servidor Control PC **abierto en la PC** (doble clic en `iniciar` o autoa
 2. En la pantalla de acceso escribe:
    - **Dirección IP**: `100.x.y.z` ← la IP Tailscale que imprimió tu PC (ej: `100.126.1.3`)
    - **Puerto**: `8566`
-   - **Contraseña**: la vigente del servidor (aparece en la consola de la PC o con `login.bat`)
+   - **Contraseña**: la vigente del servidor (aparece en la consola de la PC o en la opción [3] del maestro)
 3. Conectar → la pantalla de tu PC se ve en el teléfono en vivo.
 4. Para pantalla completa (solo la PC acostado sin botones): pestaña Pantalla → botón **⛶**.
 
@@ -354,7 +316,7 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
 - Existen límites antifuerza bruta (bloqueo tras 8 intentos fallidos por minuto).
 - **Ciclo de 90 días:** por seguridad la contraseña se **renueva automáticamente** cada 90 días.
   Al hacerlo, la clave nueva se muestra en la PC (consola + ventana emergente, también al
-  arrancar con `autoinicio.bat`) y las sesiones anteriores se invalidan: vuelve a escribir
+  arrancar la PC con el autoarranque) y las sesiones anteriores se invalidan: vuelve a escribir
   la clave en el teléfono. El panel 📊 Estado mostra cuántos días de ciclo quedan.
 - Puedes cambiar la contraseña cuando quieras editando `servidor/config.json` y reiniciar
   el servidor. Borrar esos archivos no rompe nada: se regeneran automáticamente.
@@ -368,31 +330,24 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
 
 | Problema | Solución |
 |---|---|
-| El teléfono no conecta | **Causa nº 1: el Firewall** → corre `1-permitir_telefono.bat` (una vez, acepta el permiso). Luego: misma red (o hotspot), y la IP exacta que imprime la consola. |
+| El teléfono no conecta | **Causa nº 1: el Firewall** → maestro **[4]** (una vez, acepta el permiso). Luego: misma red (o hotspot), y la IP exacta que imprime la consola. |
 | La APK no conecta aunque todo esté bien | Corre `pruebas_apk.py` (20/20) y **usa la V 1.8+**: en pantalla muestra el **error EXACTO con dos fases** (TCP cruda + HTTP) — copia esa línea y resolvemos al instante. |
 | Facebook / aislamiento de red | El ROUTER puede aislar teléfono↔PC: usa el **hotspot de la PC** (IP `192.168.137.1`) o Tailscale. |
-| Firewall bloquea | `1-permitir_telefono.bat` lo agrega por ti (con nombre "Control PC", puerto 8566). |
+| Firewall bloquea | Maestro **[4]** lo agrega por ti (con nombre "Control PC", puerto 8566 + regla de `python.exe`). |
 | Video lento | Baja calidad/frames en ⚙️ Ajustes; usa 5 GHz, o Tailscale. |
 | Cursor invisible | Ya no pasa: la flecha se dibuja en el video. Actualiza la página. |
 | Instalar "app" en Chrome sin HTTPS | Chrome solo ofrece *Añadir a pantalla de inicio* (que funciona); la APK nativa es la experiencia instalada. |
 | Pantalla negra en UAC/Bloqueo | Windows protege esas pantallas; ningún software normal puede verlas. Desbloquea físicamente y vuelve a tomar control. Ctrl+Alt+Supr sí llega al usuario de la sesión. |
-| Arranque automático al encender la PC | Ejecuta `servidor\autoinicio_todos.bat` una vez (tarea administrador + respaldo). Renovación de contraseña/ciclo: `login.bat`. |
-| La APK dice "clave incorrecta" | Usa el ojo 👁 para ver lo que escribiste; la vigente la imprime el servidor o `login.bat`. |
+| Arranque automático al encender la PC | Maestro **[5]** una vez (tarea administrador + respaldo). Renovación de contraseña/ciclo: maestro **[3]**. |
+| La APK dice "clave incorrecta" | Usa el ojo 👁 para ver lo que escribiste; la vigente la imprime el servidor o el maestro **[3]**. |
 
 ## 🗂️ Estructura
 
 ```
 ControlPC/
 ├── servidor/              servidor Python (Windows)
-│   ├── CONTROL-PC.bat     ⭐ MENU MAESTRO (todo en uno)
-│   ├── iniciar.bat        arranca el servidor (con auto-reinicio)
-│   ├── iniciar_admin.bat  igual, pero como ADMINISTRADOR
-│   ├── login.bat          ver la contraseña / renovarla (Y/N) + QRs por red
-│   ├── 1-permitir_telefono.bat    🔥 permite el teléfono (Firewall)
-│   ├── 2-auditoria.bat    🕵️ auditoría de paquetes (diagnostico)
-│   ├── activar_tailscale.bat      🌍 acceso desde cualquier lugar
-│   ├── autoinicio_todos.bat       configura TODO el autoarranque
-│   ├── regla_firewall.ps1 helper del Firewall (usado por el menú)
+│   ├── CONTROL-PC.bat     ⭐ MENÚ MAESTRO — el único .bat (opciones 1–9)
+│   ├── regla_firewall.ps1  helper del Firewall
 │   ├── servidor.py        todo el servidor (captura + eventos + estado + audio + avisos)
 │   ├── requisitos.txt     librerías a instalar
 │   └── estatico/          la PWA del teléfono (HTML/JS/CSS)
@@ -411,18 +366,18 @@ ControlPC/
 - **Ventanas de seguridad (UAC)**: cuando aparece una ventana de permisos en la PC,
   el teléfono recibe una notificación con **✅ Permitir** (activa el modo silencioso,
   los avisos dejan de molestar) y **🚫 Rechazar** (cierra la ventana, requiere
-  `iniciar_admin.bat`). Nota de Windows: la ventana de UAC en sí no se puede clicar
+  la opción **[2]** del maestro). Nota de Windows: la ventana de UAC en sí no se puede clicar
   remotamente (escritorio seguro); por eso "rechazar" la mata y "permitir" la evita a futuro.
 - **Hotspot automático**: el servidor enciende el hotspot de Windows al arrancar
   (via WinRT) y muestra el SSID/clave del punto de acceso en pantalla — el teléfono
   se conecta directo a la PC **sin depender del router** (útil si tu router aísla
   los aparatos o tienes otro tipo de red).
-- **Login con QR por cada red**: `login.bat` imprime los QR para cada red activa
+- **Login con QR por cada red**: la opción **[3]** del maestro imprime los QR para cada red activa
   (Wi-Fi de casa, hotspot, VPN, Tailscale…) y el QR RÁPIDO lleva la clave dentro.
 - **Menú maestro `CONTROL-PC.bat`**: un solo `.bat` interactivo con todas las
   opciones (servidor, admin, login, firewall, autoarranque, Tailscale, auditoría).
 - **Rotación automática de clave**: cada 90 días la contraseña se renueva sola
-  y aparecen la nueva en pantalla (consola + ventana de Windows). `login.bat`
+  y aparecen la nueva en pantalla (consola + ventana de Windows). El maestro **[3]**
   te la imprime siempre y también la renueva a mano con **Y**.
 
 ## ⬇ Actualizaciones automáticas
@@ -430,7 +385,7 @@ ControlPC/
 - Cada servidor (y cada app) revisa si salió una versión nueva.
 - En la **PC** aparece una ventana: *"¿Descargar y actualizar automáticamente?"* —
   al aceptar descarga, reemplaza el programa **conservando** tu `config.json`,
-  sesiones, certificados y los `.bat`, y se reinicia sola con la versión nueva.
+  sesiones y certificados, y se reinicia sola con la versión nueva.
   Desde el teléfono también puedes dispararla (panel Aplicación → "🚀 Actualizar la PC").
 - En la **APK**: la pestaña Estado muestra "⬇ Instalar la versión V X ahora" que
   descarga el archivo con barra de progreso y abre el instalador de Android.

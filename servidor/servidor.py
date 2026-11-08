@@ -319,8 +319,6 @@ def _avisar_actualizacion() -> None:
 
 PROTEGIDOS_ACTUALIZACION = {
     "config.json", "sesiones.json", "cert.pem", "clave.pem",
-    "iniciar.bat", "iniciar_admin.bat", "autoinicio.bat", "autoinicio_todos.bat",
-    "login.bat",
 }
 
 def _aplicar_actualizacion_pc(url_zip: str) -> dict:
@@ -394,7 +392,7 @@ def _rotar_contrasena_si_corresponde(ventana: bool = False, forzar: bool = False
     """Ciclo de seguridad: cada 90 días la contraseña se renueva y las sesiones
     se borran. La nueva clave se muestra en la PC (consola y ventana) para que el
     dueño la vuelva a poner en el teléfono. Con forzar=True renueva al instante
-    (usado por login.bat)."""
+    (usado por la opción [3] del .bat MAESTRO)."""
     try:
         creada = float(CFG.get("creada", 0) or 0)
         if creada <= 0:
@@ -1342,7 +1340,7 @@ async def api_aviso(req: Request):
 @app.post("/api/rotar-clave")
 async def api_rotar_clave(req: Request):
     """Renueva la contraseña A MANO. Solo se puede llamar DESDE LA PROPIA PC
-    (127.0.0.1) — es la que usa login.bat; el teléfono no puede tocarla."""
+    (127.0.0.1) — es la que usa la opción [3] del .bat MAESTRO; el teléfono no puede tocarla."""
     usuario = req.client.host if req.client else ""
     if usuario not in ("127.0.0.1", "::1"):
         return JSONResponse({"ok": False, "error": "solo-localhost"}, status_code=403)
@@ -1782,7 +1780,7 @@ def _banner_tailscale() -> None:
     ruta = _tailscale_ruta()
     if ruta is None:
         print("Tailscale no esta instalado en esta PC.")
-        print("Instala: https://tailscale.com/download  (o usa activar_tailscale.bat)")
+        print("Instala: https://tailscale.com/download  (o usa la opcion [6] del .bat MAESTRO)")
         return
     try:
         salida = subprocess.run([ruta, "ip", "-4"], capture_output=True, text=True, timeout=15)
@@ -1807,7 +1805,7 @@ def _banner_tailscale() -> None:
     _imprimir_qr(f"http://{ip}:{puerto}/conectar?c={clave}")
 
 def _banner_login() -> None:
-    """Banner del login.bat: clave actual + los dos QR de conexión."""
+    """Banner del login (opción [3] del .bat MAESTRO): clave actual + los dos QR de conexión."""
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
