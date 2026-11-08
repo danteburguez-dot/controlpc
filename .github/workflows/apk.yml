@@ -67,6 +67,14 @@ jobs:
           if [ -n "$fdim" ] && [ -f "$fdim/android/build.gradle" ]; then
             sed -i -E 's/compileSdk(Version)?( )?=?( )?33/compileSdkVersion 36/g' "$fdim/android/build.gradle" || true
           fi
+          # cámara + Gradle 9: concurrent-futures no está en el classpath de compilación
+          # (camera-core la declara "runtime"); se declara explícita (flutter#183515)
+          cam=$(ls -d ~/.pub-cache/hosted/pub.dev/camera_android_camerax-* 2>/dev/null | head -1)
+          if [ -n "$cam" ] && [ -f "$cam/android/build.gradle" ]; then
+            grep -q "concurrent-futures" "$cam/android/build.gradle" || \
+              sed -i 's#\(.*androidx.camera:camera-core:.*\)#\1\n    implementation("androidx.concurrent:concurrent-futures:1.2.0")#' "$cam/android/build.gradle" || true
+            grep -c "concurrent-futures" "$cam/android/build.gradle" || true
+          fi
           # MainActivity con captura de micrófono NATIVA (canal propio, sin paquetes externos)
           MK=$(find android/app/src/main/kotlin -name MainActivity.kt)
           cp android_parches/MainActivity.kt "$MK"
