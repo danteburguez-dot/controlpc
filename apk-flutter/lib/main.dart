@@ -347,7 +347,7 @@ class _PantallaHomeState extends State<PantallaHome> {
     SystemChrome.setPreferredOrientations(on
         ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
         : [DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-    try { WakelockPlus.toggle(on: on); } catch (_) {}
+    try { WakelockPlus.enable(); } catch (_) {}
     if (!on) {
       SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     }
@@ -1050,7 +1050,7 @@ class _PantallaVideoState extends State<PantallaVideo> {
                   DeviceOrientation.landscapeLeft,
                   DeviceOrientation.landscapeRight,
                 ]);
-                try { WakelockPlus.toggle(on: false); } catch (_) {}
+                try { WakelockPlus.disable(); } catch (_) {}
               },
             ),
           ),
