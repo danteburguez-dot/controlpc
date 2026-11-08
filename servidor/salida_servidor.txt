@@ -1,0 +1,28 @@
+==============================================
+          CONTROL PC — servidor activo        
+==============================================
+  Solo comparte esto con tu teléfono.
+  REDES DISPONIBLES (usa la del teléfono):
+   [1] Conexión de área local* 2: 192.168.137.1:8566
+   [2] Wi-Fi: 192.168.100.27:8566
+   [3] Radmin VPN: 26.183.179.8:8566
+  Contraseña:            S28ZN9XY
+----------------------------------------------
+█▀▀▀▀▀▀▀███▀▀█▀▀▀██▀▀▀▀▀▀▀█
+█ █▀▀▀█ █ ▄ █▄█▄▄ █ █▀▀▀█ █
+█ █   █ █▄█▀▄▄▀  ██ █   █ █
+█ ▀▀▀▀▀ █▀█ ▄ █ █ █ ▀▀▀▀▀ █
+█▀█████▀█ ▄▀▀▄ ▀▄▀▀▀██▀▀▀██
+█▄   ▄█▀▀ █  ██ ▄  ▄▄  ▄ ▀█
+█    ▀ ▀██▄█▄ ▄█ ▀ █ ▀▄██ █
+█ ██▄▄ ▀▄▀█▀▀██▀ █▄▀█▀▀█ ▀█
+█ █▀▄ ▀▀▀▄ █  ██ ▀  ▀ ▀ █▄█
+█▀▀▀▀▀▀▀█▄██▀ ▀▀▀ █▀█ ▀▀█▀█
+█ █▀▀▀█ ███▄▀██▄▄ ▀▀▀ █ ▀ █
+█ █   █ ██▄ █ ▄██▀▀▀ ▀▄ █ █
+█ ▀▀▀▀▀ █▀ ███▀██ █ ▄  ▄█ █
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+INFO:     Started server process [1932]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8566 (Press CTRL+C to quit)

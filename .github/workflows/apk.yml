@@ -16,7 +16,6 @@ on:
   push:
     branches: [main, master]
     tags: ["v*"]
-    paths: ["apk-flutter/**", ".github/workflows/apk.yml"]
 
 permissions:
   contents: write
@@ -67,35 +66,28 @@ jobs:
           fdim=$(ls -d ~/.pub-cache/hosted/pub.dev/flutter_pcm_sound-* 2>/dev/null | head -1)
           if [ -n "$fdim" ] && [ -f "$fdim/android/build.gradle" ]; then
             sed -i -E 's/compileSdk(Version)?( )?=?( )?33/compileSdkVersion 36/g' "$fdim/android/build.gradle" || true
-            grep -E "compileSdk" "$fdim/android/build.gradle" || true
           fi
-          # MUY IMPORTANTE: network security config (solucion recomendada por Flutter/Android 9+)
-          if [ ! -f apk-flutter/android/app/src/main/res/xml/network_security_config.xml ]; then
-            mkdir -p apk-flutter/android/app/src/main/res/xml
-            cat > apk-flutter/android/app/src/main/res/xml/network_security_config.xml <<'EOFX'
-<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <base-config cleartextTrafficPermitted="true" />
-</network-security-config>
-EOFX
+          # network security config: HTTP claro permitido (servidor local http://)
+          if [ ! -f android/app/src/main/res/xml/network_security_config.xml ]; then
+            mkdir -p android/app/src/main/res/xml
+            printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' \
+              '<network-security-config>' \
+              '    <base-config cleartextTrafficPermitted="true" />' \
+              '</network-security-config>' \
+              > android/app/src/main/res/xml/network_security_config.xml
           fi
           if ! grep -q "networkSecurityConfig" android/app/src/main/AndroidManifest.xml; then
             sed -i '0,/<application/s//<application\n    android:networkSecurityConfig="@xml\/network_security_config"/' android/app/src/main/AndroidManifest.xml
           fi
-          # MUY IMPORTANTE: permite http en claro (el servidor de la casa es http://)
-          for MAN in android/app/src/main/AndroidManifest.xml; do
-            if [ -f "$MAN" ] && ! grep -q "usesCleartextTraffic" "$MAN"; then
-              sed -i '0,/<application/s//<application\n    android:usesCleartextTraffic="true"/' "$MAN"
-            fi
-          done
-          # MUY IMPORTANTE: el permiso de INTERNET (la plantilla flutter no lo agrega en release)
-          for MAN in android/app/src/main/AndroidManifest.xml; do
-            if [ -f "$MAN" ] && ! grep -q "android.permission.INTERNET" "$MAN"; then
-              sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$MAN"
-            fi
-          done
-          grep -E "usesCleartextTraffic|permission.INTERNET" android/app/src/main/AndroidManifest.xml || true
-          grep -E "compileSdk|targetSdk|minSdk" android/app/build.gradle* | head -8
+          # permiso de INTERNET (la plantilla flutter no lo agrega en release)
+          if ! grep -q "android.permission.INTERNET" android/app/src/main/AndroidManifest.xml; then
+            sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+          fi
+          # http en claro (redundante con la NSC, asegura compatibilidad)
+          if ! grep -q "usesCleartextTraffic" android/app/src/main/AndroidManifest.xml; then
+            sed -i '0,/<application/s//<application\n    android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+          fi
+          grep -E "networkSecurityConfig|usesCleartextTraffic|permission.INTERNET" android/app/src/main/AndroidManifest.xml
 
       - name: Compilar APK (release)
         run: |
@@ -110,7 +102,7 @@ EOFX
 
   publicar:
     needs: compilar
-    if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.crear_release == 'true') }}
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' && github.event.inputs.crear_release == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Descargar artefacto
@@ -126,8 +118,5 @@ EOFX
           name: Control PC — versión ${{ needs.compilar.outputs.version }}
           body: |
             APK nativa de Control PC (Android).
-
-            Instálala en el teléfono y conéctala al servidor de tu PC.
-            Los usuarios con versiones anteriores verán una notificación
-            de actualización al abrir su servidor.
+            Instálala en el teléfono y conéctala al servidor de tu PC (ver README).
           files: apk/app-release.apk
