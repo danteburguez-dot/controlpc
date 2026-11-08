@@ -447,7 +447,7 @@ Abre un *issue* o manda un *pull request* 🚀
 ## 🖥️📱 Comparación de versiones — de la primera hasta la actual
 
 > ¡El proyecto ha evolucionado mucho! Esta tabla muestra qué tenías en cada
-> versión y qué funciones hay disponibles en la **versión actual (V 1.10)**.
+> versión y qué funciones hay disponibles en la **versión actual (V 1.13)**.
 
 ### 📅 Línea de versiones (orden cronológico)
 
@@ -464,12 +464,15 @@ Abre un *issue* o manda un *pull request* 🚀
 | **V 1.8.0** | Nov 8 | 🩺 **Autodiagnóstico en pantalla** (TCP cruda + HTTP muestra el error REAL del sistema Android o de red) · 🎛️ **MENÚ MAESTRO** · 🕵️ auditoría de paquetes · 📶 hotspot automático vía WinRT | ✅ | ✅ APK |
 | **V 1.9.0** | Nov 8 | 🔊 **Audio GLOBAL persistente** (el sonido sigue corriendo si cambias de pestaña) · ⌨️ **teclado físico del teléfono** (Bluetooth/USB) ESCRIBE en la PC: letras, Shift/Ctrl/Alt/Win, Enter, esc, Tab, Supr, F1–12, flechas, Ñ, acentos… | ✅ | ✅ APK |
 | **V 1.10.0** | Nov 8 | 📱⛶ **MODO PANTALLA COMPLETA** horizontal: se oculta TODO y quedas SOLO viendo la pantalla de la PC con wakelock (la pantalla no se apaga), el botón de atrás bloqueado, y un botón ✕ flotante minúscula para salir · 🔊 indicador sonando si el audio está activo | ✅ | ✅ APK |
+| **V 1.11.0** | Nov 8 | 🖼️ pantalla completa con `fit completo`: la pantalla de la PC SIEMPRE cabe entera en el teléfono (antes se recortaban los bordes) | ✅ | ✅ APK |
+| **V 1.12.0** | Nov 8 | 🎛️ **RUEDITA DE SCROLL flotante** (el `ruedita central`): botón 🖱 en la barra → aparece una ruedita al costado de la pantalla; deslízala con un dedo para subir/bajar la PC (también en pantalla completa) | ✅ | ✅ APK |
+| **V 1.13.0** | Nov 8 | 🎙️ **MICRÓFONO del teléfono → la PC**: tu voz llega por los altavoces de tu PC · 📷 **CÁMARA del teléfono vista en la PC**: se abre una ventana "Cámara del teléfono" en tu PC (cámara trasera o frontal) | ✅ | ✅ APK |
 
 ### ✅ Comparación de funciones — qué hace cada versión
 
-| Función | V 1.0 | V 1.2 | V 1.4 | V 1.7 | **V 1.10 (ACTUAL)** |
+| Función | V 1.0 | V 1.2 | V 1.4 | V 1.7 | **V 1.13 (ACTUAL)** |
 |---|---|---|---|---|---|
-| Pantalla en la PC en el teléfono | ✅ web | ✅ APK | ✅ | ✅ | ✅ **incluso pantalla completa** |
+| Pantalla en la PC en el teléfono | ✅ web | ✅ APK | ✅ | ✅ | ✅ **pantalla completa y SIEMPRE completa (no se corta)** |
 | Ratón táctil (toque/arrastrar) | ✅ | ✅ | ✅ | ✅ | ✅ + flecha visible + roja al presionar |
 | Teclado en pantalla | ✅ básico | ✅ | ✅ | ✅ | ✅ ñ/acentos/F1–12/combos |
 | Teclado FÍSICO conectado al teléfono | ❌ | ❌ | ❌ | ❌ | ✅ |
@@ -479,6 +482,9 @@ Abre un *issue* o manda un *pull request* 🚀
 | Avisos automáticos del sistema | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Ventanas UAC desde el teléfono | ❌ | ❌ | ❌ | ❌ | ✅ con ✅/🚫 |
 | Pantalla completa horizontal | ❌ | ❌ | ❌ | ❌ | ✅ + wakelock |
+| Ruedita de scroll en pantalla | ❌ | ❌ | ❌ | ❌ | ✅ flotante (subir/bajar con un dedo) |
+| Micrófono del teléfono en la PC | ❌ | ❌ | ❌ | ❌ | ✅ tu voz por los altavoces de la PC |
+| Cámara del teléfono en la PC | ❌ | ❌ | ❌ | ❌ | ✅ ventana "Cámara del teléfono" |
 | Flecha del ratón visible | ❌ | ✅ | ✅ | ✅ | ✅ + roja al presionar |
 | Contraseña con ojo 👁 | ❌ | ❌ | ✅ | ✅ | ✅ |
 | Hotspot automático | ❌ | ❌ | ❌ | ❌ | ✅ |
@@ -489,7 +495,7 @@ Abre un *issue* o manda un *pull request* 🚀
 | Sesiones con renovación de 90d | ❌ | ✅ | ✅ | ✅ | ✅ |
 
 > 🍰 **Consejo**: si instalaste una versión vieja, la APK te avisa con la notificación
-> 🔔 y con el boton "⬇ Instalar la versión V 1.10 ahora" en la pestaña Estado.
+> 🔔 y con el boton "⬇ Instalar la versión V 1.13 ahora" en la pestaña Estado.
 > Tu instalación vieja conserva todo (config, sesiones) sin pérdida.
 
 ## 📜 Licencia
