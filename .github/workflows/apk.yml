@@ -67,6 +67,9 @@ jobs:
           if [ -n "$fdim" ] && [ -f "$fdim/android/build.gradle" ]; then
             sed -i -E 's/compileSdk(Version)?( )?=?( )?33/compileSdkVersion 36/g' "$fdim/android/build.gradle" || true
           fi
+          # MainActivity con captura de micrófono NATIVA (canal propio, sin paquetes externos)
+          MK=$(find android/app/src/main/kotlin -name MainActivity.kt)
+          cp android_parches/MainActivity.kt "$MK"
           # network security config: HTTP claro permitido (servidor local http://)
           if [ ! -f android/app/src/main/res/xml/network_security_config.xml ]; then
             mkdir -p android/app/src/main/res/xml

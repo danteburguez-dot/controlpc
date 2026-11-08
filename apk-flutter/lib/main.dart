@@ -14,7 +14,6 @@ import "package:flutter/services.dart";
 import "package:camera/camera.dart";
 import "package:flutter_pcm_sound/flutter_pcm_sound.dart";
 import "package:permission_handler/permission_handler.dart";
-import "package:mic_stream/mic_stream.dart";
 import "package:http/http.dart" as http;
 import "package:open_filex/open_filex.dart";
 import "package:path_provider/path_provider.dart";
@@ -556,6 +555,9 @@ class _PantallaHomeState extends State<PantallaHome> {
 // ------------------------------------------------------------------ audio global ---
 
 class ServicioAudio {
+  static const _canalMicCtrl = MethodChannel("controlpc/micro_ctrl");
+  static const _canalMic = EventChannel("controlpc/micro");
+
   WebSocketChannel? canal;
   bool escuchando = false;
   String estado = "apagado";
@@ -664,28 +666,27 @@ class ServicioAudio {
       }
       final c2 = WebSocketChannel.connect(c.urlWsMicro);
       microCanal = c2;
-      MicStream.shouldRequestPermission(false);
-      final st = MicStream.microphone(
-        audioSource: AudioSource.DEFAULT,
-        sampleRate: 48000,
-        channelConfig: ChannelConfig.CHANNEL_IN_MONO,
-        audioFormat: AudioFormat.ENCODING_PCM_16BIT,
-      ) as Stream<Uint8List>;
-      microSub = st.listen(
+      microSub = _canalMic.receiveBroadcastStream().listen(
         (datos) {
-          try { microCanal?.sink.add(datos); } catch (_) {}
+          try {
+            if (datos is List<int>) microCanal?.sink.add(datos);
+          } catch (_) {}
         },
         onError: (_) => microParar(),
         onDone: () => microParar(),
+        cancelOnError: true,
       );
+      await _canalMicCtrl.invokeMethod("iniciar");
       microActivo = true;
       microEstado = "tu voz llega a los altavoces de la PC 🎙";
     } catch (e) {
       microEstado = "❌ $e";
+      await microParar();
     }
   }
 
   Future<void> microParar() async {
+    try { await _canalMicCtrl.invokeMethod("parar"); } catch (_) {}
     try { await microSub?.cancel(); } catch (_) {}
     microSub = null;
     try { microCanal?.sink.close(); } catch (_) {}
