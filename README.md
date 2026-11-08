@@ -15,12 +15,14 @@
 
 | Archivo | Qué hace | ¿Doble clic? |
 |---|---|---|
+| **`CONTROL-PC.bat`** | ⭐ **MENÚ MAESTRO** — un solo `.bat` con TODAS las opciones (servidor, admin, login, firewall, autoarranque, Tailscale, auditoría) | ✅ la forma más cómoda de usar todo |
 | **`1-permitir_telefono.bat`** | 🔥 **CORRELO PRIMERO**: agrega la **regla del Firewall** para que el teléfono pueda entrar (sin esto, la APK dirá "No se pudo conectar") | ✅ una sola vez, acepta el permiso |
 | `iniciar.bat` | **abre el servidor** (lo común) | ✅ primera vez instala librerías y muestra IP + contraseña + QR |
 | `iniciar_admin.bat` | lo mismo pero como ADMINISTRADOR (permite 🚫 rechazar UAC desde el teléfono) | opcional |
-| `login.bat` | muestra la contraseña actual + **2 QR**: uno que conecta el teléfono sin escribir nada (la clave va dentro del QR) y otro normal — con **Y** renueva la clave y el QR | cuando quieras |
+| `login.bat` | muestra la contraseña actual + **2 QR por cada red disponible** (rápido y normal) — con **Y** renueva la clave y el QR | cuando quieras |
 | `autoinicio_todos.bat` | deja configurado que **arranque solo** al encender la PC | una sola vez |
 | `activar_tailscale.bat` | instala/conecta **Tailscale** y te imprime la IP 100.x + QR para acceso **desde cualquier lugar del mundo** | una vez por PC |
+| `2-auditoria.bat` | 🕵️ **auditoría de paquetes**: Windows graba y reporta los intentos de conexión del teléfono (para diagnosticar bloqueos) | solo para diagnóstico |
 | `config.json` | guarda tu contraseña y ajustes (no se borra al actualizar) | no tocar |
 
 > La contraseña la ves en la **consola** al arrancar, o con `login.bat` (con los
@@ -40,7 +42,24 @@ Windows **bloquea** las conexiones entrantes por defecto. Si la APK te dice
 (Solo una vez por PC. Los `.bat` `iniciar_admin.bat` / `1-permitir_telefono.bat`
 hacen esto solo; **esta es la razón número 1** por la que "no conecta" aún.)
 
-## 🦇 Guía completa de los 5 archivos `.bat`
+## 🦇 Guía completa de los archivos `.bat` (hay un **MENÚ MAESTRO** que los agrupa)
+
+### ⭐ `CONTROL-PC.bat` — 🎛️ "CONTROL PC - MAESTRO" (todo en uno)
+- Un solo `.bat` con **menú interactivo**:
+  ```
+  ============================================================
+               CONTROL PC - MENU MAESTRO
+  ============================================================
+    [1] Abrir el servidor (normal)
+    [2] Servidor como ADMINISTRADOR (permite [o] rechazar UAC desde telefono)
+    [3] Login: ver contrasena / renovarla (Y/N) - con QR
+    [4] FIREWALL: permitir el telefono (si no conecta, corre ESTO)
+    [5] Autoarranque completo (server al encender la PC)
+    [6] Tailscale: acceso desde CUALQUIER lugar del mundo
+    [7] Auditoria de paquetes (ve que bloquea al telefono)
+    [0] Salir
+  ```
+- Si prefieres los `.bat` individuales: siguen existiendo y funcionan igual.
 
 ### 1️⃣ `iniciar.bat` — 🖥️ "Control PC - Servidor"
 - Doble clic = abre el servidor.
@@ -175,6 +194,20 @@ El servidor **no necesita internet**: solo que la PC y el teléfono estén en la
   y conecta el teléfono a esa red. La app detecta la nueva IP automáticamente y te la muestra
   en el panel 📊 Estado → "Direcciones para conectar".
 
+## 🔀 ¿Qué IP pongo según dónde esté? (tabla de modos)
+
+La **misma PC** se anuncia con distinta dirección según por dónde hables con ella.
+`login.bat` (y el banner del servidor) imprimen SIEMPRE la lista de redes activas con sus QR:
+
+| El teléfono está en… | IP que pones en la APK/web |
+|---|---|
+| 🏠 El Wi-Fi de la casa (el mismo que la PC) | `192.168.100.x` (la IP exacta imprime la consola — ej. `192.168.100.27`) |
+| 📶 El **hotspot de la PC** (Punto de acceso móvil de Windows) | `192.168.137.1` (fijo de Windows) |
+| 🌐 Redes distintas (Pts/) / datos móviles / otro país | `100.x.y.z` (**Tailscale** activo en ambos) |
+
+> 💡 Las apps teléfonos a veces **bloquean el Wi-Fi local** de fábrica (aislamiento de aparatos):
+> si el Wi-Fi de casa te falla, usa el **hotspot de la PC** (el camino garantizado) o Tailscale.
+
 ## 🌍 Desde cualquier lugar del mundo — Tailscale
 
 1. Instala [Tailscale](https://tailscale.com/download) en la PC y en el teléfono (gratis).
@@ -182,6 +215,8 @@ El servidor **no necesita internet**: solo que la PC y el teléfono estén en la
 3. La PC recibirá una IP del tipo `100.x.y.z` (la app la lista en panel Estado).
 4. Desde cualquier sitio: abre `http://100.x.y.z:8566/app/` — cifrado extremo a extremo,
    **sin abrir puertos del router**.
+5. Atajo de una vez: doble clic en **`activar_tailscale.bat`** (o la opción [6] del menú maestro)
+   — instala, logeua y te imprime la IP + QR. También: `python servidor.py --tailscale`.
 
 ## 📦 APK nativa (opcional)
 
@@ -225,6 +260,15 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
   para que al reiniciar la PC **no pida la contraseña de nuevo**.
 - El hilo de *estado* sondea el sistema cada 2,5 s y expone `/api/estado`.
 
+### Comandos de mantenimiento del servidor (modos extra)
+
+| Comando | Qué hace |
+|---|---|
+| `python servidor.py --loginqr` | imprime la contraseña + los QR de TODAS las redes activas (el que usan las opciones [3] del menú) |
+| `python servidor.py --rotar` | renueva la contraseña AHORA cfa corte de sesiones (como la opción "Y" del login) |
+| `python servidor.py --tailscale` | muestra la IP 100.x.y.z de Tailscale + QR (acceso mundial) |
+| `python servidor.py --prueba` | test rápido de módulos, pantallas y captura |
+
 ### Archivos que genera
 | Archivo | Qué es |
 |---|---|
@@ -258,33 +302,13 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
 - Para exponer directo a internet (nada recomendado) necesitarías un túnel con HTTPS
   (Cloudflare Tunnel / cert + `cert.pem`/`clave.pem` — el servidor los usa si existen).
 
-## 🧩 Requisitos
-
-- PC: **Windows 10/11**, Python 3.10+ — librerías: `fastapi`, `uvicorn`, `mss`, `Pillow`,
-  `psutil`, `pyautogui`, `qrcode`, `numpy`, `soundcard`, `pycaw`, `comtypes`, `pywin32`
-  (`requisitos.txt`, se instalan solas con el .bat).
-- Teléfono: navegador moderno (Chrome/Edge/Brave). Toque y vibración opcionales.
-- APK: Android 8+.
-
-## 🧪 ¿Quieres verificar tu instalación? — 20 pruebas automáticas
-
-En la raíz del proyecto vive `pruebas_apk.py`: simula una APK Android de punta
-a punta contra tu servidor y valida además el archivo `.apk` descargado
-(zip intacto, firma Android v2, plugin de audio dentro). Con el servidor
-abierto corre:
-
-```
-python pruebas_apk.py
-```
-
- dovrebbe decir **20/20 TODO VERDE**. Es también el diagnóstico recomendado
-si algo falla después de actualizar (te dice exactamente qué pieza falló).
-
 ## 🛠️ Solución de problemas
 
 | Problema | Solución |
 |---|---|
 | El teléfono no conecta | **Causa nº 1: el Firewall** → corre `1-permitir_telefono.bat` (una vez, acepta el permiso). Luego: misma red (o hotspot), y la IP exacta que imprime la consola. |
+| La APK no conecta aunque todo esté bien | Corre `pruebas_apk.py` (20/20) y **usa la V 1.8+**: en pantalla muestra el **error EXACTO con dos fases** (TCP cruda + HTTP) — copia esa línea y resolvemos al instante. |
+| Facebook / aislamiento de red | El ROUTER puede aislar teléfono↔PC: usa el **hotspot de la PC** (IP `192.168.137.1`) o Tailscale. |
 | Firewall bloquea | `1-permitir_telefono.bat` lo agrega por ti (con nombre "Control PC", puerto 8566). |
 | Video lento | Baja calidad/frames en ⚙️ Ajustes; usa 5 GHz, o Tailscale. |
 | Cursor invisible | Ya no pasa: la flecha se dibuja en el video. Actualiza la página. |
@@ -297,16 +321,21 @@ si algo falla después de actualizar (te dice exactamente qué pieza falló).
 
 ```
 ControlPC/
-├── servidor/          servidor Python (Windows)
-│   ├── iniciar.bat      arranca el servidor (con auto-reinicio)
+├── servidor/              servidor Python (Windows)
+│   ├── CONTROL-PC.bat     ⭐ MENU MAESTRO (todo en uno)
+│   ├── iniciar.bat        arranca el servidor (con auto-reinicio)
 │   ├── iniciar_admin.bat  igual, pero como ADMINISTRADOR
-│   ├── login.bat        ver la contraseña y renovarla cuando quiras (Y/N)
-│   ├── autoinicio.bat   tarea simple al encender la PC
-│   ├── autoinicio_todos.bat  configura TODO el autoarranque
-│   ├── servidor.py      todo el servidor (captura + eventos + estado + audio + avisos)
-│   ├── requisitos.txt   librerías a instalar
-│   └── estatico/        la PWA del teléfono (HTML/JS/CSS)
-├── apk-flutter/       proyecto APK nativo (opcional)
+│   ├── login.bat          ver la contraseña / renovarla (Y/N) + QRs por red
+│   ├── 1-permitir_telefono.bat    🔥 permite el teléfono (Firewall)
+│   ├── 2-auditoria.bat    🕵️ auditoría de paquetes (diagnostico)
+│   ├── activar_tailscale.bat      🌍 acceso desde cualquier lugar
+│   ├── autoinicio_todos.bat       configura TODO el autoarranque
+│   ├── regla_firewall.ps1 helper del Firewall (usado por el menú)
+│   ├── servidor.py        todo el servidor (captura + eventos + estado + audio + avisos)
+│   ├── requisitos.txt     librerías a instalar
+│   └── estatico/          la PWA del teléfono (HTML/JS/CSS)
+├── pruebas_apk.py         🧪 20 pruebas automáticas (todo verde = sano)
+├── apk-flutter/           proyecto APK nativo (opcional)
 └── .github/workflows/apk.yml   compila la APK en GitHub gratis
 ```
 
@@ -322,6 +351,19 @@ ControlPC/
   los avisos dejan de molestar) y **🚫 Rechazar** (cierra la ventana, requiere
   `iniciar_admin.bat`). Nota de Windows: la ventana de UAC en sí no se puede clicar
   remotamente (escritorio seguro); por eso "rechazar" la mata y "permitir" la evita a futuro.
+
+## 📜 Historial de versiones
+
+| Versión | Qué trajo |
+|---|---|
+| **V 1.0** | servidor (pantalla, ratón, teclado, estado) + web PWA del teléfono |
+| **V 1.2** | APK nativa Flutter completa; flecha del ratón visible; sesiones persistentes |
+| **V 1.3** | ojo 👁 para la contraseña; errores claros; QR de login por red |
+| **V 1.4** | campo IP inteligente (acepta el enlace completo) |
+| **V 1.5** | NSC de Android: HTTP claro permitido de forma oficial |
+| **V 1.6** | permiso INTERNET en el manifest (bug crítico de conexión) |
+| **V 1.7** | cleartext multi-línea (fin del bloqueo definitiva) |
+| **V 1.8** | 🩺 **autodiagnóstico en pantalla** (TCP cruda + HTTP con el error real) + menú maestro `.bat` + auditoría de paquetes |
 
 ## ⬇ Actualizaciones automáticas
 
