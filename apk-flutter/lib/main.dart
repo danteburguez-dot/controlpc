@@ -472,7 +472,7 @@ class _PantallaHomeState extends State<PantallaHome> {
             entrada: _entradaApi,
             solo: true,
             servicioAudio: _servicioAudio,
-            alSalidaCompleta: () => _viaPantallaCompleta(false),
+            alSalidaCompleta: _viaPantallaCompleta,
           ),
         ),
       );
@@ -499,7 +499,8 @@ class _PantallaHomeState extends State<PantallaHome> {
           ]),
         ),
         body: TabBarView(children: [
-          PantallaVideo(conexion: widget.conexion, entrada: _entradaApi, tecladoHw: true),
+          PantallaVideo(conexion: widget.conexion, entrada: _entradaApi, tecladoHw: true,
+            alSalidaCompleta: _viaPantallaCompleta),
           PantallaEstado(conexion: widget.conexion, datos: datos, uacBoton: _cambiaUac, prueba: _pruebaAviso),
           PantallaAudio(conexion: widget.conexion, datos: datos, servicio: _servicioAudio),
           PantallaTeclado(conexion: widget.conexion, entrada: _entradaApi),
@@ -639,7 +640,7 @@ class PantallaVideo extends StatefulWidget {
   final bool tecladoHw;
   final bool solo;
   final ServicioAudio? servicioAudio;
-  final VoidCallback? alSalidaCompleta;
+  final ValueChanged<bool>? alSalidaCompleta;
   const PantallaVideo({super.key, required this.conexion, required this.entrada,
     this.tecladoHw = true, this.solo = false, this.servicioAudio, this.alSalidaCompleta});
   @override
