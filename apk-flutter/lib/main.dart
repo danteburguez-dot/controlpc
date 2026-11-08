@@ -1018,7 +1018,7 @@ class _PantallaVideoState extends State<PantallaVideo> {
                               ..translate(desplaza.dx, desplaza.dy)
                               ..scale(zoom),
                             child: Image.memory(fotograma!,
-                                fit: BoxFit.cover, gaplessPlayback: true),
+                                fit: BoxFit.contain, gaplessPlayback: true),
                           ),
                         ),
                       );
