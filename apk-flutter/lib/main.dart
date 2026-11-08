@@ -19,7 +19,7 @@ import "package:shared_preferences/shared_preferences.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
-const String VERSION_APP = "1.8";
+const String VERSION_APP = "1.9";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -329,9 +329,14 @@ class PantallaHome extends StatefulWidget {
 }
 
 class _PantallaHomeState extends State<PantallaHome> {
+  final ServicioAudio _servicioAudio = ServicioAudio();
   Map<String, dynamic>? datos;
   Timer? reloj;
   int ultimoAvisoId = 0;
+
+  Future<void> _entradaApi(Map<String, Object?> evento) async {
+    await apiPost(widget.conexion, "/api/entrada", evento);
+  }
 
   @override
   void initState() {
@@ -343,6 +348,7 @@ class _PantallaHomeState extends State<PantallaHome> {
   @override
   void dispose() {
     reloj?.cancel();
+    _servicioAudio.liberar();
     super.dispose();
   }
 
@@ -457,10 +463,10 @@ class _PantallaHomeState extends State<PantallaHome> {
           ]),
         ),
         body: TabBarView(children: [
-          PantallaVideo(conexion: widget.conexion),
+          PantallaVideo(conexion: widget.conexion, entrada: _entradaApi, tecladoHw: true),
           PantallaEstado(conexion: widget.conexion, datos: datos, uacBoton: _cambiaUac, prueba: _pruebaAviso),
-          PantallaAudio(conexion: widget.conexion, datos: datos),
-          PantallaTeclado(conexion: widget.conexion),
+          PantallaAudio(conexion: widget.conexion, datos: datos, servicio: _servicioAudio),
+          PantallaTeclado(conexion: widget.conexion, entrada: _entradaApi),
         ]),
       ),
     );
@@ -503,11 +509,99 @@ class _PantallaHomeState extends State<PantallaHome> {
   }
 }
 
+// ------------------------------------------------------------------ audio global ---
+
+class ServicioAudio {
+  WebSocketChannel? canal;
+  bool escuchando = false;
+  String estado = "apagado";
+  String nota = "";
+  int sr = 0;
+  final List<int> buffer = [];
+
+  Future<void> _montarAudio() async {
+    try {
+      await FlutterPcmSound.setup(sampleRate: sr, channelCount: 1);
+      await FlutterPcmSound.setFeedThreshold(sr ~/ 10);
+      FlutterPcmSound.setFeedCallback((quedan) => _drenar());
+      await FlutterPcmSound.start();
+    } catch (e) {
+      estado = "❌ $e";
+    }
+  }
+
+  void _drenar() async {
+    if (buffer.isEmpty) return;
+    final cuantos = math.min(buffer.length, 4800);
+    final toma = buffer.sublist(0, cuantos);
+    buffer.removeRange(0, cuantos);
+    await FlutterPcmSound.feed(PcmArrayInt16.fromList(toma));
+  }
+
+  Future<void> iniciar(Conexion conexion) async {
+    if (escuchando) return;
+    try {
+      final c = WebSocketChannel.connect(conexion.urlWsAudio);
+      canal = c;
+      late final StreamSubscription susc;
+      susc = c.stream.listen(
+        (mensaje) {
+          if (mensaje is String) {
+            try {
+              final meta = jsonDecode(mensaje) as Map<String, dynamic>;
+              final error = (meta["error"] ?? "") as String;
+              if (error.isNotEmpty) {
+                escuchando = false;
+                estado = "❌ $error";
+                susc.cancel();
+                return;
+              }
+              sr = (meta["sr"] as num?)?.toInt() ?? 48000;
+              buffer.clear();
+              _montarAudio();
+              escuchando = true;
+              estado = "escuchando · $sr Hz";
+            } catch (_) {}
+          } else if (mensaje is List<int>) {
+            try {
+              final bytes = Uint8List.fromList(mensaje.cast<int>());
+              final i16 = Int16List.view(bytes.buffer);
+              buffer.addAll(i16);
+              _drenar();
+            } catch (_) {}
+          }
+        },
+        onError: (_) => liberar(),
+        onDone: () => liberar(),
+      );
+    } catch (e) {
+      estado = "❌ $e";
+    }
+  }
+
+  Future<void> parar() async {
+    try { canal?.sink.close(); } catch (_) {}
+    await liberar();
+    escuchando = false;
+    estado = "apagado";
+  }
+
+  Future<void> liberar() async {
+    buffer.clear();
+    try {
+      FlutterPcmSound.setFeedCallback(null);
+      await FlutterPcmSound.release();
+    } catch (_) {}
+  }
+}
+
 // ------------------------------------------------------------------ video ---
 
 class PantallaVideo extends StatefulWidget {
   final Conexion conexion;
-  const PantallaVideo({super.key, required this.conexion});
+  final Future<void> Function(Map<String, Object?>) entrada;
+  final bool tecladoHw;
+  const PantallaVideo({super.key, required this.conexion, required this.entrada, this.tecladoHw = true});
   @override
   State<PantallaVideo> createState() => _PantallaVideoState();
 }
@@ -522,6 +616,55 @@ class _PantallaVideoState extends State<PantallaVideo> {
   String estado = "Conectando…";
   Timer? reintento;
   double zoom = 1.0;
+  final FocusNode nodoTeclado = FocusNode();
+  final Set<String> modsTeclado = {};
+
+  static const MODS_NOMBRES = {
+    "Control Left": "ctrl", "Control Right": "ctrl",
+    "Shift Left": "shift", "Shift Right": "shift",
+    "Alt Left": "alt", "Alt Right": "alt",
+    "Meta Left": "win", "Meta Right": "win",
+  };
+
+  static const ESPECIALES = {
+    "Enter": "enter", "ISO Enter": "enter", "Numpad Enter": "enter",
+    "Escape": "escape", "Backspace": "backspace", "Tab": "tab",
+    "Delete": "delete", "Home": "home", "End": "end",
+    "Page Up": "pageup", "Page Down": "pagedown",
+    "Arrow Left": "left", "Arrow Right": "right",
+    "Arrow Up": "up", "Arrow Down": "down", "Space": "space",
+  };
+
+  String? _especial(String label) {
+    if (ESPECIALES.containsKey(label)) return ESPECIALES[label];
+    final m = RegExp(r"^F([1-9]|1[0-2])$").firstMatch(label);
+    if (m != null) return "f${m.group(1)}";
+    return null;
+  }
+
+  /// Traduce eventos del teclado físico del teléfono al PC
+  void teclaKey(KeyEvent ev) {
+    final nombre = ev.logicalKey.keyLabel;
+    if (MODS_NOMBRES.containsKey(nombre)) {
+      final m = MODS_NOMBRES[nombre]!;
+      if (ev is KeyDownEvent) modsTeclado.add(m);
+      if (ev is KeyUpEvent) modsTeclado.remove(m);
+      return;
+    }
+    if (ev is KeyDownEvent) {
+      final carac = ev.character;
+      if (carac != null && carac.length == 1 && carac.codeUnitAt(0) >= 32) {
+        widget.entrada({"t": "texto", "s": carac});
+      } else {
+        final esp = _especial(nombre);
+        if (esp != null) {
+          widget.entrada({"t": "teclas", "mods": modsTeclado.toList(), "k": esp});
+          if (modsTeclado.isNotEmpty) modsTeclado.clear();
+        }
+      }
+    }
+  }
+
   Offset desplaza = Offset.zero;
   int nivelCalidad = 0;
   int fps = 24;
@@ -537,7 +680,6 @@ class _PantallaVideoState extends State<PantallaVideo> {
   Timer? temporizadorLargo;
   bool arrastreLibre = false;
   ({double x, double y})? posTocar;
-  // gesto 2 dedos
   double? gD0;
   double? gZ0;
   Offset? gCentro;
@@ -546,11 +688,13 @@ class _PantallaVideoState extends State<PantallaVideo> {
   @override
   void initState() {
     super.initState();
+    nodoTeclado.requestFocus();
     _conectar();
   }
 
   @override
   void dispose() {
+    nodoTeclado.dispose();
     reintento?.cancel();
     temporizadorLargo?.cancel();
     try {
@@ -802,30 +946,35 @@ class _PantallaVideoState extends State<PantallaVideo> {
       children: [
         if (!completo) behavedControls(botones),
         Expanded(
-          child: fotograma == null
-              ? Center(child: Text(estado, textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white54)))
-              : LayoutBuilder(builder: (context, cajas) {
-                  final tamano = Size(cajas.maxWidth, cajas.maxHeight);
-                  final dibujar = Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: (e) => _abajo(e, tamano),
-                    onPointerMove: (e) => _sobreMover(e, tamano),
-                    onPointerUp: (e) => _arriba(e, tamano),
-                    onPointerCancel: (e) => _cancela(e, tamano),
-                    child: SizedBox.expand(
-                      child: Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.identity()
-                          ..translate(desplaza.dx, desplaza.dy)
-                          ..scale(zoom),
-                        child: Image.memory(fotograma!, fit: BoxFit.contain,
-                          gaplessPlayback: true),
+          child: KeyboardListener(
+            focusNode: nodoTeclado,
+            autofocus: true,
+            onKeyEvent: teclaKey,
+            child: fotograma == null
+                ? Center(child: Text(estado + "\n\n⌨️ si conectas un teclado al teléfono, tóca la pantalla una vez y escriba directo en la PC", textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white54)))
+                : LayoutBuilder(builder: (context, cajas) {
+                    final tamano = Size(cajas.maxWidth, cajas.maxHeight);
+                    final dibujar = Listener(
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: (e) => _abajo(e, tamano),
+                      onPointerMove: (e) => _sobreMover(e, tamano),
+                      onPointerUp: (e) => _arriba(e, tamano),
+                      onPointerCancel: (e) => _cancela(e, tamano),
+                      child: SizedBox.expand(
+                        child: Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()
+                            ..translate(desplaza.dx, desplaza.dy)
+                            ..scale(zoom),
+                          child: Image.memory(fotograma!, fit: BoxFit.contain,
+                            gaplessPlayback: true),
+                        ),
                       ),
-                    ),
-                  );
-                  return dibujar;
-                }),
+                    );
+                    return dibujar;
+                  }),
+          ),
         ),
         if (!completo)
           Padding(
@@ -1072,20 +1221,16 @@ class _PantallaEstadoState extends State<PantallaEstado> {
 class PantallaAudio extends StatefulWidget {
   final Conexion conexion;
   final Map<String, dynamic>? datos;
-  const PantallaAudio({super.key, required this.conexion, required this.datos});
+  final ServicioAudio servicio;
+  const PantallaAudio({super.key, required this.conexion, required this.datos, required this.servicio});
   @override
   State<PantallaAudio> createState() => _PantallaAudioState();
 }
 
 class _PantallaAudioState extends State<PantallaAudio> {
-  WebSocketChannel? canalAudio;
-  bool escuchando = false;
-  String estadoAudio = "apagado";
-  String nota = "";
   bool mudo = false;
   double nivel = 50;
   bool arrastrando = false;
-  List<int> buffer = [];
 
   Future<void> _aplicarVolumen(double? nuevo, bool? mudoPred) async {
     final cuerpo = <String, dynamic>{};
@@ -1098,114 +1243,9 @@ class _PantallaAudioState extends State<PantallaAudio> {
     if (nv != null && !arrastrando) setState(() => nivel = nv.toDouble());
   }
 
-  void _drenar() async {
-    if (buffer.isEmpty) return;
-    final cuantos = math.min(buffer.length, 4800); // ~100 ms a 48 kHz
-    final toma = buffer.sublist(0, cuantos);
-    buffer.removeRange(0, cuantos);
-    await FlutterPcmSound.feed(PcmArrayInt16.fromList(toma));
-  }
-
-  Future<void> _escuchar() async {
-    if (escuchando) {
-      try {
-        canalAudio?.sink.close();
-      } catch (_) {}
-      await _soltarReproduccion();
-      setState(() {
-        escuchando = false;
-        canalAudio = null;
-        estadoAudio = "apagado";
-        nota = "";
-      });
-      return;
-    }
-    try {
-      final c = WebSocketChannel.connect(widget.conexion.urlWsAudio);
-      canalAudio = c;
-      late final StreamSubscription susc;
-      susc = c.stream.listen(
-        (mensaje) {
-          if (mensaje is String) {
-            try {
-              final meta = jsonDecode(mensaje) as Map<String, dynamic>;
-              final error = (meta["error"] ?? "") as String;
-              if (error.isNotEmpty) {
-                setState(() {
-                  nota = "❌ $error";
-                  escuchando = false;
-                  estadoAudio = "apagado";
-                });
-                susc.cancel();
-                return;
-              }
-              final srLocal = (meta["sr"] as num?)?.toInt() ?? 48000;
-              if (!escuchando) _montarAudio(srLocal);
-              if (mounted) {
-                setState(() {
-                  escuchando = true;
-                  estadoAudio = "escuchando · $srLocal Hz";
-                  nota = "Sonido de la PC al instante (una fracción de segundo es normal).";
-                });
-              }
-            } catch (_) {}
-          } else if (mensaje is List<int> && escuchando) {
-            final bytes = Uint8List.fromList(mensaje.cast<int>());
-            final i16 = Int16List.view(bytes.buffer);
-            buffer.addAll(i16);
-            _drenar();
-          }
-        },
-        onError: (_) => _pararAudio(),
-        onDone: () => _pararAudio(),
-      );
-    } catch (e) {
-      setState(() => nota = "❌ $e");
-    }
-  }
-
-  Future<void> _montarAudio(int sampleRate) async {
-    try {
-      await FlutterPcmSound.setup(sampleRate: sampleRate, channelCount: 1);
-      // colchón de ~100 ms: bajo retardo estable frente al Wi-Fi
-      await FlutterPcmSound.setFeedThreshold(sampleRate ~/ 10);
-      FlutterPcmSound.setFeedCallback((quedan) => _drenar());
-      FlutterPcmSound.start();
-    } catch (e) {
-      setState(() => nota = "❌ audio: $e");
-    }
-  }
-
-  Future<void> _soltarReproduccion() async {
-    buffer.clear();
-    try {
-      FlutterPcmSound.setFeedCallback(null);
-      await FlutterPcmSound.release();
-    } catch (_) {}
-  }
-
-  Future<void> _pararAudio() async {
-    canalAudio = null;
-    await _soltarReproduccion();
-    if (mounted) {
-      setState(() {
-        if (escuchando) estadoAudio = "conexión cerrada";
-        escuchando = false;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    try {
-      canalAudio?.sink.close();
-    } catch (_) {}
-    _soltarReproduccion();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
+    final a = widget.servicio;
     final v = (widget.datos?["volumen"] as Map<String, dynamic>?);
     final soportado = v?["soportado"] == true;
     final nivelReal = (v?["nivel"] as num?)?.toDouble();
@@ -1238,21 +1278,27 @@ class _PantallaAudioState extends State<PantallaAudio> {
         const Text("Controla el volumen maestro de la PC",
             style: TextStyle(fontSize: 11.5, color: Colors.white38)),
         const SizedBox(height: 18),
-        const Text("SONIDO EN VIVO",
+        const Text("SONIDO EN VIVO (sigue sonando si cambias de pestaña)",
             style: TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 1)),
         const SizedBox(height: 6),
         FilledButton.icon(
-          icon: Icon(escuchando ? Icons.stop : Icons.play_arrow),
-          label: Text(escuchando ? "⏸ Detener sonido" : "▶ Escuchar el sonido de la PC"),
-          onPressed: _escuchar,
+          icon: Icon(a.escuchando ? Icons.stop : Icons.play_arrow),
+          label: Text(a.escuchando ? "⏸ Detener sonido" : "▶ Escuchar el sonido de la PC"),
+          onPressed: () {
+            if (a.escuchando) {
+              a.parar();
+            } else {
+              a.iniciar(widget.conexion);
+            }
+          },
         ),
         const SizedBox(height: 6),
-        Text(estadoAudio, style: const TextStyle(fontSize: 12.5, color: Colors.white70)),
-        if (nota.isNotEmpty)
-          Text(nota, style: const TextStyle(fontSize: 12, color: Colors.white38)),
+        Text(a.estado, style: const TextStyle(fontSize: 12.5, color: Colors.white70)),
         const SizedBox(height: 14),
-        const Text("Cuando escuches, el audio completo de la PC llega al teléfono en tiempo real.",
+        const Text("Si empezas a escuchar, puedes cambiar a Pantalla y verás la PC mientras el sonido sigue.",
             style: TextStyle(fontSize: 11.5, color: Colors.white38)),
+        const SizedBox(height: 10),
+        Text(a.nota, style: const TextStyle(fontSize: 12, color: Colors.white38)),
       ],
     );
   }
@@ -1260,9 +1306,12 @@ class _PantallaAudioState extends State<PantallaAudio> {
 
 // ------------------------------------------------------------------ teclado ---
 
+// ------------------------------------------------------------------ teclado ---
+
 class PantallaTeclado extends StatefulWidget {
   final Conexion conexion;
-  const PantallaTeclado({super.key, required this.conexion});
+  final Future<void> Function(Map<String, Object?>) entrada;
+  const PantallaTeclado({super.key, required this.conexion, required this.entrada});
   @override
   State<PantallaTeclado> createState() => _PantallaTecladoState();
 }
@@ -1272,7 +1321,7 @@ class _PantallaTecladoState extends State<PantallaTeclado> {
   final Set<String> _mods = {};
 
   Future<void> _enviaTeclas(String k) async {
-    await apiPost(widget.conexion, "/api/entrada", {
+    await widget.entrada({
       "t": "teclas",
       "mods": _mods.toList(),
       "k": k,
@@ -1339,7 +1388,7 @@ class _PantallaTecladoState extends State<PantallaTeclado> {
             onPressed: () async {
               final s = _texto.text;
               if (s.isNotEmpty) {
-                await apiPost(widget.conexion, "/api/entrada", {"t": "texto", "s": s});
+                await widget.entrada({"t": "texto", "s": s});
                 _texto.clear();
               }
             },
@@ -1356,7 +1405,7 @@ class _PantallaTecladoState extends State<PantallaTeclado> {
                     onPressed: () async {
                       final evento = Map<String, Object?>.from(e.value);
                       final lista = ((evento["mods"] ?? []) as List).cast<Object>();
-                      await apiPost(widget.conexion, "/api/entrada", {
+                      await widget.entrada({
                         ...evento,
                         "mods": [..._mods, ...lista],
                       });

@@ -210,13 +210,51 @@ La **misma PC** se anuncia con distinta dirección según por dónde hables con 
 
 ## 🌍 Desde cualquier lugar del mundo — Tailscale
 
-1. Instala [Tailscale](https://tailscale.com/download) en la PC y en el teléfono (gratis).
-2. Inicia sesión con **la misma cuenta** en ambos.
-3. La PC recibirá una IP del tipo `100.x.y.z` (la app la lista en panel Estado).
-4. Desde cualquier sitio: abre `http://100.x.y.z:8566/app/` — cifrado extremo a extremo,
-   **sin abrir puertos del router**.
-5. Atajo de una vez: doble clic en **`activar_tailscale.bat`** (o la opción [6] del menú maestro)
-   — instala, logeua y te imprime la IP + QR. También: `python servidor.py --tailscale`.
+**Esto es el paso final que hace que el sistema funcione desde CUALQUIER lugar, sin importar la red.**
+
+### En la PC (una sola vez):
+
+1. Instala Tailscale:
+   - Con el menú maestro → opción **[6]** (o `activar_tailscale.bat`)
+   - O `winget install -e --id Tailscale.Tailscale`
+2. Ejecuta el **login** (abre tu navegador):
+   ```
+   "C:\Program Files\Tailscale\tailscale.exe" up
+   ```
+   → entra con tu cuenta (Google/GitHub/Apple) y acepta.
+3. Verifica la IP que recibió tu PC:
+   ```
+   "C:\Program Files\Tailscale\tailscale.exe" ip -4
+   → ej: 100.126.1.3
+   ```
+   (La IP 100.x.y.z **no cambia nunca** — es la dirección permanente de tu PC en la red Tailscale.)
+
+### En el teléfono (una sola vez):
+
+1. Instala la app **Tailscale** desde la Play Store (es la oficial, con candado).
+2. Ábrela → **Log in** → entra con **la MISMA cuenta** que en la PC.
+3. Activa el botón **"Connected"** en la app.
+4. En la lista de dispositivos verás tu PC (`desktop-ci4lc9m`) junto a tu teléfono.
+
+### En la APK "Control PC" (desde cualquier lugar):
+
+```
+Dirección IP:    100.x.y.z    (la IP Tailscale de tu PC)
+Puerto:          8566
+Contraseña:      la vigente
+→ Conectar → 🎉
+```
+
+Funciona con **datos móviles, Wi-Fi ajeno, avión, hotel, otro país…** — es un túnel
+cifrado extremo a extremo (WireGuard) que **no depende del router** ni de puertos
+abiertos. El servidor en tu PC debe seguir corriendo (autoarranques ya configurados).
+
+### Verificar desde la PC:
+
+```
+"C:\Program Files\Tailscale\tailscale.exe" status       (debe listar 2+ equipos)
+"C:\Program Files\Tailscale\tailscale.exe" netcheck     (calidad del túnel)
+```
 
 ## 📦 APK nativa (opcional)
 
@@ -351,6 +389,17 @@ ControlPC/
   los avisos dejan de molestar) y **🚫 Rechazar** (cierra la ventana, requiere
   `iniciar_admin.bat`). Nota de Windows: la ventana de UAC en sí no se puede clicar
   remotamente (escritorio seguro); por eso "rechazar" la mata y "permitir" la evita a futuro.
+- **Hotspot automático**: el servidor enciende el hotspot de Windows al arrancar
+  (via WinRT) y muestra el SSID/clave del punto de acceso en pantalla — el teléfono
+  se conecta directo a la PC **sin depender del router** (útil si tu router aísla
+  los aparatos o tienes otro tipo de red).
+- **Login con QR por cada red**: `login.bat` imprime los QR para cada red activa
+  (Wi-Fi de casa, hotspot, VPN, Tailscale…) y el QR RÁPIDO lleva la clave dentro.
+- **Menú maestro `CONTROL-PC.bat`**: un solo `.bat` interactivo con todas las
+  opciones (servidor, admin, login, firewall, autoarranque, Tailscale, auditoría).
+- **Rotación automática de clave**: cada 90 días la contraseña se renueva sola
+  y aparecen la nueva en pantalla (consola + ventana de Windows). `login.bat`
+  te la imprime siempre y también la renueva a mano con **Y**.
 
 ## 📜 Historial de versiones
 
@@ -363,7 +412,7 @@ ControlPC/
 | **V 1.5** | NSC de Android: HTTP claro permitido de forma oficial |
 | **V 1.6** | permiso INTERNET en el manifest (bug crítico de conexión) |
 | **V 1.7** | cleartext multi-línea (fin del bloqueo definitiva) |
-| **V 1.8** | 🩺 **autodiagnóstico en pantalla** (TCP cruda + HTTP con el error real) + menú maestro `.bat` + auditoría de paquetes |
+| **V 1.8** | 🩺 autodiagnóstico en pantalla (TCP cruda + HTTP con el error real) + menú maestro `.bat` + auditoría de paquetes + hotspot automático |
 
 ## ⬇ Actualizaciones automáticas
 
