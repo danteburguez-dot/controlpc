@@ -14,7 +14,7 @@ import "package:flutter/services.dart";
 import "package:camera/camera.dart";
 import "package:flutter_pcm_sound/flutter_pcm_sound.dart";
 import "package:permission_handler/permission_handler.dart";
-import "package:record/record.dart";
+import "package:mic_stream/mic_stream.dart";
 import "package:http/http.dart" as http;
 import "package:open_filex/open_filex.dart";
 import "package:path_provider/path_provider.dart";
@@ -566,7 +566,6 @@ class ServicioAudio {
   // — micrófono del teléfono → la PC
   WebSocketChannel? microCanal;
   StreamSubscription? microSub;
-  AudioRecorder? rec;
   bool microActivo = false;
   String microEstado = "apagado";
 
@@ -580,7 +579,7 @@ class ServicioAudio {
 
   Future<void> _montarAudio() async {
     try {
-      await FlutterPcmSound.setup(sampleRate: sr, channels: 1);
+      await FlutterPcmSound.setup(sampleRate: sr, channelCount: 1);
       await FlutterPcmSound.setFeedThreshold(sr ~/ 10);
       FlutterPcmSound.setFeedCallback((quedan) => _drenar());
       await FlutterPcmSound.start();
@@ -658,16 +657,21 @@ class ServicioAudio {
   Future<void> microIniciar(Conexion c) async {
     if (microActivo) { await microParar(); return; }
     try {
-      rec = AudioRecorder();
-      if (!await rec!.hasPermission()) {
+      final perm = await Permission.microphone.request();
+      if (!perm.isGranted) {
         microEstado = "permiso de micrófono denegado";
         return;
       }
       final c2 = WebSocketChannel.connect(c.urlWsMicro);
       microCanal = c2;
-      final config = const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 48000, numChannels: 1);
-      await rec!.startStream(config);
-      microSub = rec!.stream.listen(
+      MicStream.shouldRequestPermission(false);
+      final st = MicStream.microphone(
+        audioSource: AudioSource.DEFAULT,
+        sampleRate: 48000,
+        channelConfig: ChannelConfig.CHANNEL_IN_MONO,
+        audioFormat: AudioFormat.ENCODING_PCM_16BIT,
+      ) as Stream<Uint8List>;
+      microSub = st.listen(
         (datos) {
           try { microCanal?.sink.add(datos); } catch (_) {}
         },
@@ -682,9 +686,8 @@ class ServicioAudio {
   }
 
   Future<void> microParar() async {
-    try { await rec?.stop(); } catch (_) {}
-    try { rec?.dispose(); } catch (_) {}
-    rec = null;
+    try { await microSub?.cancel(); } catch (_) {}
+    microSub = null;
     try { microCanal?.sink.close(); } catch (_) {}
     microCanal = null;
     microActivo = false;
@@ -762,8 +765,8 @@ class ServicioAudio {
     put16(img.planes[0].bytesPerRow);
     put16(img.planes[1].bytesPerRow);
     put16(img.planes[2].bytesPerRow);
-    put16(img.planes[1].pixelStride);
-    put32(0);
+    put16(img.planes[1].bytesPerPixel);
+    put16(0);
     put32(img.planes[0].bytes.length);
     put32(img.planes[1].bytes.length);
     put32(img.planes[2].bytes.length);
@@ -1514,8 +1517,6 @@ class _PantallaAudioState extends State<PantallaAudio> {
     mudo = (r["mudo"] ?? false) == true;
     final nv = (r["nivel"] as num?)?.toInt();
     if (nv != null && !arrastrando) setState(() => nivel = nv.toDouble());
-    if (nv != null) a.nivel = nv.toDouble();
-    a.mudo = mudo;
   }
 
   @override

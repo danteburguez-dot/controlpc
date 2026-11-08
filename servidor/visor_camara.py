@@ -7,7 +7,7 @@ import tkinter as tk
 from PIL import Image, ImageTk
 
 root = tk.Tk()
-root.title("Control PC — cámaro del teléfono")
+root.title("Control PC — Cámara del teléfono")
 root.configure(bg="#05070c")
 etiqueta = tk.Label(root, bg="#05070c")
 etiqueta.pack(fill="both", expand=True)
@@ -37,7 +37,7 @@ def bucle():
         foto = ImageTk.PhotoImage(img)
         etiqueta.config(image=foto)
         etiqueta.image = foto
-        estado.config(text="cámara activa ✓ (cerrar prosecutor: cierra esta ventana)")
+        estado.config(text="cámara activa ✓")
     except socket.timeout:
         estado.config(text="sin señal de cámara...")
     except Exception as e:
