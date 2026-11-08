@@ -141,12 +141,7 @@ ControlPC/
 
 ## 🚀 Inicio rápido (3 pasos)
 
-> 🔒 **Importante:** cada quien controla **su propia computadora**. Cuando ejecutes
-> el servidor, verás **TU IP y TU contraseña**. No existe un servidor central:
-> tu teléfono se conecta directamente a tu PC, y nadie más puede verla sin tu
-> contraseña y sin tu IP exacta.
-
-### 1) En la PC (Windows)
+### �viamente 1) En la PC (Windows)
 - Requisito: [Python 3.10+](https://www.python.org/downloads/) (marca *"Add python.exe to PATH"*).
 - Doble clic en `servidor\iniciar.bat` — la primera vez instala las librerías.
 - Acepta el permiso del **Firewall de Windows** que aparecerá (casilla de *redes privadas* marcada).
@@ -157,13 +152,31 @@ Abre en el teléfono:  http://192.168.1.50:8566/app/   <- TU IP exacta se muestr
 Contraseña:           ABCD2345                        <- ejemplo, la tuya será otra
 ```
 
-### 2) En el teléfono
+### ⭐ 2) Conecta el teléfono — **TALSICALE (la forma RECOMENDADA)**
+
+> 🌍 **La mejor forma de conectar SIEMPRE funciona, en cualquier red y a cualquier distancia.**
+> Sin importar el router, pensado para que el "Wi-Fi de casa no aparezca" o "aísla los aparatos"
+> — con Tailscale no importa: el録túnel cifrado conecta PC y teléfono directamente. Una vez
+> instalado y conectado, ya nunca dejes de usarlo ni configuras nada.
+
+1. **En la PC**: doble clic en **`CONTROL-PC.bat`** (menú maestro) → opción **[6] Tailscale** → instala y abre el login → entra con tu cuenta (Google/GitHub).
+2. **En el teléfono**: instala la app **"Tailscale"** desde la Play Store → abre e inicia con **la MISMA cuenta** → activa el botón **"Connected"**.
+3. Abre la APK "Control PC" (o la web) y escribe la **IP 100.x.y.z de tu PC** (imprimida en pantalla) + la contraseña → **Conectar** ✅
+
+> 💡 Con Tailscale: puedes estar en otro país, con datos móviles, en el wi-fi de la madre,
+> en un avión — la conexión SIEMPRE funciona. Sin depender del router ni del firewall.
+
+** Alternativa rápida (misma red Wi-Fi, sin instalar nada):**
 - Con **Chrome**, estando en el **mismo Wi-Fi**, abre la dirección (o escanea el QR).
 - Escribe la contraseña que apareció en la PC y pulsa Conectar.
 - Menú ⋮ → **Añadir a pantalla de inicio** → tendrá el icono como una app.
 
 ### 3) Úsala
 Toca la pantalla, mueve el ratón, escribe, desliza, abre `cualquier cosa`. 🎉
+
+> �摄像机 Nota: si tu router **aisla los aparatos** entre sí (a veces configurado por el ISP), la
+> conexión por el Wi-Fi de casa puede fallar con "No route to host" — usa el **hotspot de la PC**
+> (Configuración → Punto de acceso móvil) o **Tailscale** que es la vía recomendada.
 
 ## 🧭 Controles táctiles
 
@@ -197,13 +210,13 @@ El servidor **no necesita internet**: solo que la PC y el teléfono estén en la
 ## 🔀 ¿Qué IP pongo según dónde esté? (tabla de modos)
 
 La **misma PC** se anuncia con distinta dirección según por dónde hables con ella.
-`login.bat` (y el banner del servidor) imprimen SIEMPRE la lista de redes activas con sus QR:
+**⭐ TAILSCALE es la forma recomendada** — funciona en cualquier red del mundo (datos móviles, wi-fi ajeno, otra ciudad).
 
-| El teléfono está en… | IP que pones en la APK/web |
-|---|---|
-| 🏠 El Wi-Fi de la casa (el mismo que la PC) | `192.168.100.x` (la IP exacta imprime la consola — ej. `192.168.100.27`) |
-| 📶 El **hotspot de la PC** (Punto de acceso móvil de Windows) | `192.168.137.1` (fijo de Windows) |
-| 🌐 Redes distintas (Pts/) / datos móviles / otro país | `100.x.y.z` (**Tailscale** activo en ambos) |
+| El teléfono está en… | IP que pones en la APK/web | Recomendación |
+|---|---|---|
+| 🌍 **Cualquier red / país / datos móviles** | `100.x.y.z` (**Tailscale** activo en ambos) | ⭐ **RECOMENDADA** |
+| 📶 El **hotspot de la PC** (Punto de acceso móvil de Windows) | `192.168.137.1` (fijo de Windows) | ✅ garantizado si el router aísla |
+| 🏠 El Wi-Fi de la casa (el mismo que la PC) | `192.168.100.x` (la IP exacta imprime la consola) | ⚠️ puede fallar si el router aísla |
 
 > 💡 Las apps teléfonos a veces **bloquean el Wi-Fi local** de fábrica (aislamiento de aparatos):
 > si el Wi-Fi de casa te falla, usa el **hotspot de la PC** (el camino garantizado) o Tailscale.
