@@ -20,7 +20,7 @@ import "package:url_launcher/url_launcher.dart";
 import "package:wakelock_plus/wakelock_plus.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
-const String VERSION_APP = "1.10";
+const String VERSION_APP = "1.11";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
