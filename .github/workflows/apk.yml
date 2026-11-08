@@ -83,6 +83,14 @@ jobs:
           if ! grep -q "android.permission.INTERNET" android/app/src/main/AndroidManifest.xml; then
             sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
           fi
+          # micrófono y cámara (los dos permisos del teléfono)
+          if ! grep -q "android.permission.RECORD_AUDIO" android/app/src/main/AndroidManifest.xml; then
+            sed -i 's#<uses-permission android:name="android.permission.INTERNET"/>#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>#' android/app/src/main/AndroidManifest.xml
+          fi
+          if ! grep -q "android.permission.CAMERA" android/app/src/main/AndroidManifest.xml; then
+            sed -i '0,/<application/s//<uses-permission android:name="android.permission.CAMERA"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+          fi
+          grep -cE "permissions:|permission\." android/app/src/main/AndroidManifest.xml || true
           # http en claro (redundante con la NSC, asegura compatibilidad)
           if ! grep -q "usesCleartextTraffic" android/app/src/main/AndroidManifest.xml; then
             sed -i '0,/<application/s//<application\n    android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml

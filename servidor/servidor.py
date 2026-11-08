@@ -1380,6 +1380,162 @@ async def api_entrada(req: Request):
     manejar_entrada(datos)
     return {"ok": True}
 
+PUERTO_DEF = 8566
+VERSION_APP = "1.13"
+
+CAMARA = {"sock": None, "pid": None}   # visor de cámara de la PC
+
+def _abrir_visor_camara():
+    """Abre (una sola vez) la ventana visor de la cámara en la PC"""
+    if CAMARA.get("sock"):
+        try:
+            CAMARA["sock"].send(b"ping")  # sigue vivo?
+            return
+        except Exception:
+            try:
+                if CAMARA.get("pid"): psutil.Process(CAMARA["pid"]).kill()
+            except Exception: pass
+    try:
+        esv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        esv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        esv.bind(("127.0.0.1", 8570))
+        esv.listen(1)
+        esv.settimeout(12)
+        proceso = subprocess.Popen(
+            [sys.executable, str(BASE / "visor_camara.py")],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        sockv, _ = esv.accept()
+        sockv.settimeout(8)
+        CAMARA["sock"] = sockv
+        CAMARA["pid"] = proceso.pid
+    except Exception:
+        CAMARA["sock"] = None
+
+@app.websocket("/ws-camara")
+async def ws_camara(ws: WebSocket):
+    token = ws.cookies.get("sesion", "") or ws.query_params.get("sesion", "")
+    await ws.accept()
+    if not token_valido(token):
+        try:
+            await ws.send_text(json.dumps({"t": "error", "m": "sin-sesion"}))
+            await ws.close(code=4401)
+        except Exception: pass
+        return
+    await ws.send_text(json.dumps({"t": "meta-camara", "ok": True}))
+    _abrir_visor_camara()
+    sockv = CAMARA.get("sock")
+    try:
+        while True:
+            mensaje = await ws.receive()
+            if mensaje.get("type") == "websocket.disconnect":
+                break
+            dato = mensaje.get("bytes")
+            if dato and sockv:
+                try:
+                    jpg = _yuv_a_jpg(dato)
+                    if sockv:
+                        sockv.sendall(struct.pack(">I", len(jpg)) + jpg)
+                except Exception:
+                    sockv = None
+                    CAMARA["sock"] = None
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        CAMARA.pop("sock", None)
+
+def _yuv_a_jpg(payload: bytes) -> bytes:
+    """Convierte YUV420 (o NV12/interleaved) enviado por el phone a JPEG"""
+    w = int.from_bytes(payload[0:2], "big")
+    alto = int.from_bytes(payload[2:4], "big")
+    sY = int.from_bytes(payload[4:6], "big")
+    sU = int.from_bytes(payload[6:8], "big")
+    sV = int.from_bytes(payload[8:10], "big")
+    psU = int.from_bytes(payload[10:12], "big")
+    lenY = int.from_bytes(payload[14:18], "big")
+    lenU = int.from_bytes(payload[18:22], "big")
+    lenV = int.from_bytes(payload[22:26], "big")
+    datos = payload[26:]
+    yb = datos[0:lenY]
+    ub = datos[lenY:lenY + lenU]
+    vb = datos[lenY + lenU:lenY + lenU + lenV]
+    import numpy as _np
+    y = _np.frombuffer(yb, _np.uint8).reshape(alto, sY)[:, :w].astype("float32")
+    ch, pw = alto // 2, w // 2
+    if psU == 2:
+        uvp = _np.frombuffer(ub, _np.uint8).reshape(ch, sU)[:, :pw * 2]
+        u = uvp[:, 0::2].astype("float32")
+        v = uvp[:, 1::2].astype("float32")
+    else:
+        u = _np.frombuffer(ub, _np.uint8).reshape(ch, sU)[:, :pw].astype("float32")
+        v = _np.frombuffer(vb, _np.uint8).reshape(ch, sV)[:, :pw].astype("float32")
+    u = _np.repeat(_np.repeat(u, 2, axis=0), 2, axis=1)[:alto, :w]
+    v = _np.repeat(_np.repeat(v, 2, axis=0), 2, axis=1)[:alto, :w]
+    r = y + 1.402 * (v - 128)
+    g = y - 0.344136 * (u - 128) - 0.714136 * (v - 128)
+    b = y + 1.772 * (u - 128)
+    rgb = _np.dstack([r, g, b]).clip(0, 255).astype("uint8")
+    from PIL import Image as _Img
+    img = _Img.fromarray(rgb)
+    if w > 1280:
+        img = img.resize((1280, max(1, round(img.height * 1280 / w))))
+    buf = _io.BytesIO()
+    img.save(buf, "JPEG", quality=70, subsampling=1)
+    return buf.getvalue()
+
+@app.websocket("/ws-micro")
+async def ws_micro(ws: WebSocket):
+    """Recibe el PCM16 del micrófono del teléfono y lo reproduce en los altavoces de la PC"""
+    token = ws.cookies.get("sesion", "") or ws.query_params.get("sesion", "")
+    await ws.accept()
+    if not token_valido(token):
+        try:
+            await ws.send_text(json.dumps({"t": "error", "m": "sin-sesion"}))
+            await ws.close(code=4401)
+        except Exception: pass
+        return
+    await ws.send_text(json.dumps({"t": "meta-micro", "sr": 48000, "ok": True}))
+    cola_mic = Queue(maxsize=80)
+    detener_mic = threading.Event()
+
+    def _bucle_player():
+        try:
+            import numpy as _np
+            import soundcard as sc
+            altavoz = sc.default_speaker()
+            with altavoz.player(samplerate=48000, channels=1) as pl:
+                while not detener_mic.is_set():
+                    try:
+                        datos = cola_mic.get(timeout=0.1)
+                    except Empty:
+                        continue
+                    try:
+                        pcm = _np.frombuffer(datos, dtype="<i2").astype("float32") / 32768.0
+                        pl.play(pcm.reshape(-1, 1))
+                    except Exception: pass
+        except Exception as e:
+            AUDIO["error"] = str(e)[:120]
+    threading.Thread(target=_bucle_player, daemon=True).start()
+
+    try:
+        while True:
+            mensaje = await ws.receive()
+            if mensaje.get("type") == "websocket.disconnect":
+                break
+            dato = mensaje.get("bytes")
+            if dato:
+                try: cola_mic.put_nowait(dato)
+                except Full:
+                    try: cola_mic.get_nowait(); cola_mic.put_nowait(dato)
+                    except Exception: pass
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        detener_mic.set()
+
 @app.websocket("/ws-audio")
 async def ws_audio(ws: WebSocket):
     token = ws.cookies.get("sesion", "") or ws.query_params.get("sesion", "")

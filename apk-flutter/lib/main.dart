@@ -11,7 +11,10 @@ import "dart:typed_data";
 
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
+import "package:camera/camera.dart";
 import "package:flutter_pcm_sound/flutter_pcm_sound.dart";
+import "package:permission_handler/permission_handler.dart";
+import "package:record/record.dart";
 import "package:http/http.dart" as http;
 import "package:open_filex/open_filex.dart";
 import "package:path_provider/path_provider.dart";
@@ -40,6 +43,8 @@ class Conexion {
   String get base => "http://$host:$puerto";
   Uri get urlWsVideo => Uri.parse("ws://$host:$puerto/ws?sesion=$token");
   Uri get urlWsAudio => Uri.parse("ws://$host:$puerto/ws-audio?sesion=$token");
+  Uri get urlWsMicro => Uri.parse("ws://$host:$puerto/ws-micro?sesion=$token");
+  Uri get urlWsCamara => Uri.parse("ws://$host:$puerto/ws-camara?sesion=$token");
 
   static const clavePrefs = "conexion_guardada";
 }
@@ -363,6 +368,8 @@ class _PantallaHomeState extends State<PantallaHome> {
   @override
   void dispose() {
     reloj?.cancel();
+    _servicioAudio.microParar();
+    _servicioAudio.camaraParar();
     _servicioAudio.liberar();
     super.dispose();
   }
@@ -556,9 +563,24 @@ class ServicioAudio {
   int sr = 0;
   final List<int> buffer = [];
 
+  // — micrófono del teléfono → la PC
+  WebSocketChannel? microCanal;
+  StreamSubscription? microSub;
+  AudioRecorder? rec;
+  bool microActivo = false;
+  String microEstado = "apagado";
+
+  // — cámara del teléfono → ventana en la PC
+  CameraController? camControl;
+  WebSocketChannel? camCanal;
+  bool camActiva = false;
+  String camEstado = "apagada";
+  String camDireccion = "trasera";
+  DateTime camUltima = DateTime.now().subtract(const Duration(minutes: 5));
+
   Future<void> _montarAudio() async {
     try {
-      await FlutterPcmSound.setup(sampleRate: sr, channelCount: 1);
+      await FlutterPcmSound.setup(sampleRate: sr, channels: 1);
       await FlutterPcmSound.setFeedThreshold(sr ~/ 10);
       FlutterPcmSound.setFeedCallback((quedan) => _drenar());
       await FlutterPcmSound.start();
@@ -629,6 +651,126 @@ class ServicioAudio {
       FlutterPcmSound.setFeedCallback(null);
       await FlutterPcmSound.release();
     } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------- micrófono
+
+  Future<void> microIniciar(Conexion c) async {
+    if (microActivo) { await microParar(); return; }
+    try {
+      rec = AudioRecorder();
+      if (!await rec!.hasPermission()) {
+        microEstado = "permiso de micrófono denegado";
+        return;
+      }
+      final c2 = WebSocketChannel.connect(c.urlWsMicro);
+      microCanal = c2;
+      final config = const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 48000, numChannels: 1);
+      await rec!.startStream(config);
+      microSub = rec!.stream.listen(
+        (datos) {
+          try { microCanal?.sink.add(datos); } catch (_) {}
+        },
+        onError: (_) => microParar(),
+        onDone: () => microParar(),
+      );
+      microActivo = true;
+      microEstado = "tu voz llega a los altavoces de la PC 🎙";
+    } catch (e) {
+      microEstado = "❌ $e";
+    }
+  }
+
+  Future<void> microParar() async {
+    try { await rec?.stop(); } catch (_) {}
+    try { rec?.dispose(); } catch (_) {}
+    rec = null;
+    try { microCanal?.sink.close(); } catch (_) {}
+    microCanal = null;
+    microActivo = false;
+    microEstado = "apagado";
+  }
+
+  double nivel = 50;
+  bool mudo = false;
+
+  Future<void> aplicarVolumen(Conexion c, double? nuevo, bool? mudoPred) async {
+    final cuerpo = <String, dynamic>{};
+    if (nuevo != null) cuerpo["nivel"] = nuevo.round();
+    if (mudoPred != null) cuerpo["mudo"] = mudoPred;
+    final r = await apiPost(c, "/api/volumen", cuerpo);
+    if (r == null) return;
+    mudo = (r["mudo"] ?? false) == true;
+    final nv = (r["nivel"] as num?)?.toInt();
+    if (nv != null) nivel = nv.toDouble();
+  }
+
+  // ---------------------------------------------------------------- cámara
+
+  Future<void> camaraIniciar(Conexion c) async {
+    if (camActiva) { await camaraParar(); return; }
+    try {
+      final perm = await Permission.camera.request();
+      if (!perm.isGranted) {
+        camEstado = "permiso de cámara denegado";
+        return;
+      }
+      final cams = await availableCameras();
+      if (cams.isEmpty) {
+        camEstado = "no hay cámaras en el teléfono";
+        return;
+      }
+      final elegida = cams.firstWhere(
+        (x) => x.lensDirection == (camDireccion == "frontal" ? CameraLensDirection.front : CameraLensDirection.back),
+        orElse: () => cams.first,
+      );
+      camControl = CameraController(elegida, ResolutionPreset.low);
+      await camControl!.initialize();
+      final c2 = WebSocketChannel.connect(c.urlWsCamara);
+      camCanal = c2;
+      camUltima = DateTime.now().subtract(const Duration(seconds: 5));
+      await camControl!.startImageStream((img) {
+        try {
+          if (DateTime.now().difference(camUltima).inMilliseconds < 100) return;
+          camUltima = DateTime.now();
+          camCanal?.sink.add(payloadCamara(img));
+        } catch (_) {}
+      });
+      camActiva = true;
+      camEstado = "tu puerta de camera llega a la MSF PC (ventana 'Cámara del teléfono')";
+    } catch (e) {
+      camEstado = "❌ $e";
+    }
+  }
+
+  Future<void> camaraParar() async {
+    try { await camControl?.stopImageStream(); } catch (_) {}
+    try { await camControl?.dispose(); } catch (_) {}
+    camControl = null;
+    try { camCanal?.sink.close(); } catch (_) {}
+    camCanal = null;
+    camActiva = false;
+    camEstado = "apagada";
+  }
+
+  Uint8List payloadCamara(CameraImage img) {
+    final bb = BytesBuilder();
+    void put16(int v) { bb.add([(v >> 8) & 0xFF, v & 0xFF]); }
+    void put32(int v) { bb.add([(v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF]); }
+    put16(img.width);
+    put16(img.height);
+    put16(img.planes[0].bytesPerRow);
+    put16(img.planes[1].bytesPerRow);
+    put16(img.planes[2].bytesPerRow);
+    put16(img.planes[1].pixelStride);
+    put32(0);
+    put32(img.planes[0].bytes.length);
+    put32(img.planes[1].bytes.length);
+    put32(img.planes[2].bytes.length);
+    bb.add(img.planes[0].bytes);
+    bb.add(img.planes[1].bytes);
+    bb.add(img.planes[2].bytes);
+    return bb.toBytes();
   }
 }
 
@@ -1372,15 +1514,19 @@ class _PantallaAudioState extends State<PantallaAudio> {
     mudo = (r["mudo"] ?? false) == true;
     final nv = (r["nivel"] as num?)?.toInt();
     if (nv != null && !arrastrando) setState(() => nivel = nv.toDouble());
+    if (nv != null) a.nivel = nv.toDouble();
+    a.mudo = mudo;
   }
 
   @override
   Widget build(BuildContext context) {
     final a = widget.servicio;
+    final c = widget.conexion;
     final v = (widget.datos?["volumen"] as Map<String, dynamic>?);
     final soportado = v?["soportado"] == true;
     final nivelReal = (v?["nivel"] as num?)?.toDouble();
     final mudoReal = v?["mudo"] == true;
+    final nivelMostrado = arrastrando ? nivel : (nivelReal ?? a.nivel);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -1392,17 +1538,17 @@ class _PantallaAudioState extends State<PantallaAudio> {
             ),
             Expanded(
               child: Slider(
-                value: arrastrando ? nivel : (nivelReal ?? nivel),
+                value: nivelMostrado.clamp(0, 100),
                 min: 0, max: 100,
                 onChanged: soportado
                     ? (nv) { setState(() { nivel = nv; arrastrando = true; }); }
                     : null,
                 onChangeEnd: soportado
-                    ? (nv) => _aplicarVolumen(nv, null)
+                    ? (nv) { _aplicarVolumen(nv, null); a.nivel = nv; }
                     : null,
               ),
             ),
-            Text("${(nivelReal ?? nivel).round()}%",
+            Text("${nivelMostrado.round()}%",
                 style: const TextStyle(fontSize: 13)),
           ],
         ),
@@ -1428,8 +1574,49 @@ class _PantallaAudioState extends State<PantallaAudio> {
         const SizedBox(height: 14),
         const Text("Si empezas a escuchar, puedes cambiar a Pantalla y verás la PC mientras el sonido sigue.",
             style: TextStyle(fontSize: 11.5, color: Colors.white38)),
+        const SizedBox(height: 20),
+        const Text("🎙️ MICRÓFONO DEL TELÉFONO",
+            style: TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 1)),
+        const SizedBox(height: 6),
+        FilledButton.icon(
+          icon: Icon(a.microActivo ? Icons.mic_off : Icons.mic),
+          label: Text(a.microActivo ? "🎙️ Detener mi micrófono" : "🎙️ Enviar MI micrófono a la PC"),
+          onPressed: () => a.microIniciar(widget.conexion),
+        ),
+        const SizedBox(height: 6),
+        Text(a.microEstado, style: const TextStyle(fontSize: 12.5, color: Colors.white70)),
+        const Text("La PC escucha tu voz por sus altavoces (también lo oirán en llamadas de la PC).",
+            style: TextStyle(fontSize: 11, color: Colors.white38)),
+        const SizedBox(height: 20),
+        const Text("📷 CÁMARA DEL TELÉFONO EN LA PC",
+            style: TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 1)),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            ChoiceChip(
+              label: const Text("Trasera", style: TextStyle(fontSize: 12)),
+              selected: a.camDireccion == "trasera",
+              onSelected: (_) => setState(() => a.camDireccion = "trasera"),
+            ),
+            const SizedBox(width: 6),
+            ChoiceChip(
+              label: const Text("Frontal", style: TextStyle(fontSize: 12)),
+              selected: a.camDireccion == "frontal",
+              onSelected: (_) => setState(() => a.camDireccion = "frontal"),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        FilledButton.icon(
+          icon: Icon(a.camActiva ? Icons.videocam_off : Icons.videocam),
+          label: Text(a.camActiva ? "⏹ Detener mi cámara" : "📷 Enviar MI cámara (se mira en una ventana de la PC)"),
+          onPressed: () => a.camaraIniciar(c),
+        ),
+        const SizedBox(height: 6),
+        Text(a.camEstado, style: const TextStyle(fontSize: 12.5, color: Colors.white70)),
         const SizedBox(height: 10),
-        Text(a.nota, style: const TextStyle(fontSize: 12, color: Colors.white38)),
+        const Text("Se abre una ventana \u201CCámara del teléfono\u201D en la PC mostrando tu cámara en vivo (etiqueta de la ventana en la barra de tareas).",
+            style: TextStyle(fontSize: 11.5, color: Colors.white38)),
       ],
     );
   }
