@@ -32,10 +32,11 @@ echo   [4] FIREWALL: permitir el telefono (si no conecta, corre ESTO)
 echo   [5] Autoarranque completo (server al encender la PC)
 echo   [6] Tailscale: acceso desde CUALQUIER lugar del mundo
 echo   [7] Auditoria de paquetes (ve que bloquea al telefono)
+echo   [8] HOTSPOT automatico (lleva el telefono a la red del PC, SIN ROUTER)
 echo   [0] Salir
 echo.
 set "OPC="
-set /p OPC="   Elige una opcion (0-7): "
+set /p OPC="   Elige una opcion (0-8): "
 if "%OPC%"=="1" goto :iniciar
 if "%OPC%"=="2" goto :admin
 if "%OPC%"=="3" goto :login
@@ -43,6 +44,7 @@ if "%OPC%"=="4" goto :firewall
 if "%OPC%"=="5" goto :auto
 if "%OPC%"=="6" goto :tscale
 if "%OPC%"=="7" goto :auditia
+if "%OPC%"=="8" goto :hotsp
 if "%OPC%"=="0" exit /b 0
 goto :menu
 
@@ -85,6 +87,11 @@ call "%BASE%activar_tailscale.bat"
 goto :menu
 
 :auditia
-call "%BASE% 2-auditoria.bat"
+call "%BASE%2-auditoria.bat"
+pause
+goto :menu
+
+:hotsp
+powershell -NoProfile -ExecutionPolicy Bypass -File "%BASE%hotspot_auto.ps1"
 pause
 goto :menu
