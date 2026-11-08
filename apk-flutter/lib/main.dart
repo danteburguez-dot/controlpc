@@ -766,7 +766,7 @@ class ServicioAudio {
     put16(img.planes[0].bytesPerRow);
     put16(img.planes[1].bytesPerRow);
     put16(img.planes[2].bytesPerRow);
-    put16(img.planes[1].bytesPerPixel);
+    put16(img.planes[1].bytesPerPixel ?? 1);
     put16(0);
     put32(img.planes[0].bytes.length);
     put32(img.planes[1].bytes.length);
