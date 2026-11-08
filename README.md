@@ -412,19 +412,6 @@ ControlPC/
   y aparecen la nueva en pantalla (consola + ventana de Windows). `login.bat`
   te la imprime siempre y también la renueva a mano con **Y**.
 
-## 📜 Historial de versiones
-
-| Versión | Qué trajo |
-|---|---|
-| **V 1.0** | servidor (pantalla, ratón, teclado, estado) + web PWA del teléfono |
-| **V 1.2** | APK nativa Flutter completa; flecha del ratón visible; sesiones persistentes |
-| **V 1.3** | ojo 👁 para la contraseña; errores claros; QR de login por red |
-| **V 1.4** | campo IP inteligente (acepta el enlace completo) |
-| **V 1.5** | NSC de Android: HTTP claro permitido de forma oficial |
-| **V 1.6** | permiso INTERNET en el manifest (bug crítico de conexión) |
-| **V 1.7** | cleartext multi-línea (fin del bloqueo definitiva) |
-| **V 1.8** | 🩺 autodiagnóstico en pantalla (TCP cruda + HTTP con el error real) + menú maestro `.bat` + auditoría de paquetes + hotspot automático |
-
 ## ⬇ Actualizaciones automáticas
 
 - Cada servidor (y cada app) revisa si salió una versión nueva.
@@ -444,6 +431,55 @@ Ideas que serían bienvenidas: captura con la API `DXGI`, transmitir sonido,
 muchos más atajos del teclado, cliente para iOS con TouchID, modo oscuro/claro…
 Abre un *issue* o manda un *pull request* 🚀
 
+## 🖥️📱 Comparación de versiones — de la primera hasta la actual
+
+> ¡El proyecto ha evolucionado mucho! Esta tabla muestra qué tenías en cada
+> versión y qué funciones hay disponibles en la **versión actual (V 1.10)**.
+
+### 📅 Línea de versiones (orden cronológico)
+
+| Versión | Fecha aprox | Qué cambió | ¿Funciona de un lugar remoto? | ¿Firefox/aparato? |
+|---|---|---|---|---|
+| **V 1.0.0** | Nov 7 más temprano | Servidor base + app web PWA (solo Chrome, sin instalacion) — pantalla, ratón táctil básico, teclado, estado CPU/RAM | ❌ Solo red local | ✅ Web |
+| **V 1.0.4** | Nov 7 (la primera APK publicada) | Primera APK Flutter compilada — pantalla, estado básico, teclado | ❌ No conectaba (sin permiso INTERNET) | ✅ APK |
+| **V 1.2.0** | Nov 7 mejorado | FLECHA DEL RATÓN visible + roja al presionar, sesiones persistentes, pantalla en vivo mejorada | ❌ No conectaba | ✅ APK |
+| **V 1.3.0** | Nov 8 | Ojo 👁 para ver lo que escribiste, errores claros (401 vs conexión), QR login multi-red | ❌ No conectaba | ✅ APK |
+| **V 1.4.0** | Nov 8 | Campo IP inteligente — acepta `ip:puerto` o el enlace completo pegado | ❌ No conectaba | ✅ APK |
+| **V 1.5.0** | Nov 8 | NetworkSecurityConfig de Android — HTTP claro oficial | ❌ No conectaba | ✅ APK |
+| **V 1.6.0** | Nov 8 | 🔥 **Permiso INTERNET en el manifest** (el bug más grande: sin él, Android bloqueaba TODOS los sockets) | ⚠️ alcanzaba el servidor | ✅ APK |
+| **V 1.7.0** | Nov 8 | 🔥 **Cleartext multi-línea + completo** (el bloque restante: HTTP permitido) | ✅ ¡PRIMERA que conectó! | ✅ APK |
+| **V 1.8.0** | Nov 8 | 🩺 **Autodiagnóstico en pantalla** (TCP cruda + HTTP muestra el error REAL del sistema Android o de red) · 🎛️ **MENÚ MAESTRO** · 🕵️ auditoría de paquetes · 📶 hotspot automático vía WinRT | ✅ | ✅ APK |
+| **V 1.9.0** | Nov 8 | 🔊 **Audio GLOBAL persistente** (el sonido sigue corriendo si cambias de pestaña) · ⌨️ **teclado físico del teléfono** (Bluetooth/USB) ESCRIBE en la PC: letras, Shift/Ctrl/Alt/Win, Enter, esc, Tab, Supr, F1–12, flechas, Ñ, acentos… | ✅ | ✅ APK |
+| **V 1.10.0** | Nov 8 | 📱⛶ **MODO PANTALLA COMPLETA** horizontal: se oculta TODO y quedas SOLO viendo la pantalla de la PC con wakelock (la pantalla no se apaga), el botón de atrás bloqueado, y un botón ✕ flotante minúscula para salir · 🔊 indicador sonando si el audio está activo | ✅ | ✅ APK |
+
+### ✅ Comparación de funciones — qué hace cada versión
+
+| Función | V 1.0 | V 1.2 | V 1.4 | V 1.7 | **V 1.10 (ACTUAL)** |
+|---|---|---|---|---|---|
+| Pantalla en la PC en el teléfono | ✅ web | ✅ APK | ✅ | ✅ | ✅ **incluso pantalla completa** |
+| Ratón táctil (toque/arrastrar) | ✅ | ✅ | ✅ | ✅ | ✅ + flecha visible + roja al presionar |
+| Teclado en pantalla | ✅ básico | ✅ | ✅ | ✅ | ✅ ñ/acentos/F1–12/combos |
+| Teclado FÍSICO conectado al teléfono | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Estado del sistema (CPU/RAM/etc) | ✅ | ✅ | ✅ | ✅ | ✅ + menú de ojos + 22 pruebas |
+| Sonido de la PC en el teléfono | ❌ | ❌ | ❌ | ❌ | ✅ con volumen + silencio |
+| El sonido sigue al cambiar de pestaña | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Avisos automáticos del sistema | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Ventanas UAC desde el teléfono | ❌ | ❌ | ❌ | ❌ | ✅ con ✅/🚫 |
+| Pantalla completa horizontal | ❌ | ❌ | ❌ | ❌ | ✅ + wakelock |
+| Flecha del ratón visible | ❌ | ✅ | ✅ | ✅ | ✅ + roja al presionar |
+| Contraseña con ojo 👁 | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Hotspot automático | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Tailscale documentado | parcial | parcial | parcial | ✅ | ✅ completo |
+| Auto-actualización | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Menú maestro `.bat` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Conecta desde Tailscale (cualquier país) | ❌ | ❌ | ❌ | ⚠️ solo web | ✅ APK |
+| Sesiones con renovación de 90d | ❌ | ✅ | ✅ | ✅ | ✅ |
+
+> 🍰 **Consejo**: si instalaste una versión vieja, la APK te avisa con la notificación
+> 🔔 y con el boton "⬇ Instalar la versión V 1.10 ahora" en la pestaña Estado.
+> Tu instalación vieja conserva todo (config, sesiones) sin pérdida.
+
 ## 📜 Licencia
 
 MIT — libres de usar, copiar y modificar. Ver [`LICENSE`](LICENSE).
+
