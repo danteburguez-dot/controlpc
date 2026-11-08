@@ -59,7 +59,7 @@ ESTATICO = BASE / "estatico"
 ARCHIVO_CONFIG = BASE / "config.json"
 
 PUERTO_DEF = 8566
-VERSION_APP = "1.9"
+VERSION_APP = "1.12"
 
 # script PowerShell 5.1 + WinRT que enciende el hotspot de Windows (sin .bat ni clics)
 PS_HOTSPOT = r'''

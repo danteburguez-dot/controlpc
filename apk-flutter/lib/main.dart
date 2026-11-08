@@ -20,7 +20,7 @@ import "package:url_launcher/url_launcher.dart";
 import "package:wakelock_plus/wakelock_plus.dart";
 import "package:web_socket_channel/web_socket_channel.dart";
 
-const String VERSION_APP = "1.11";
+const String VERSION_APP = "1.12";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -711,6 +711,17 @@ class _PantallaVideoState extends State<PantallaVideo> {
   int fps = 24;
   int pantalla = 1;
   bool completo = false;
+  bool rueda = false;
+  double _ruedaAcc = 0;
+
+  void _ruedaDrag(DragUpdateDetails d) {
+    _ruedaAcc += d.delta.dy * 2;
+    while (_ruedaAcc.abs() >= 120) {
+      final paso = _ruedaAcc > 0 ? 120.0 : -120.0;
+      _envia({"t": "deslizar", "dy": paso});
+      _ruedaAcc -= paso;
+    }
+  }
 
   // estado de gestos
   final Map<int, Offset> puntas = {};
@@ -973,6 +984,12 @@ class _PantallaVideoState extends State<PantallaVideo> {
       ),
       const SizedBox(width: 6),
       IconButton(
+        icon: Icon(Icons.mouse, color: rueda ? const Color(0xFF2DD4A7) : Colors.white54),
+        tooltip: "Viene la ruedita de scroll",
+        onPressed: () => setState(() => rueda = !rueda),
+      ),
+      const SizedBox(width: 6),
+      IconButton(
         icon: Icon(completo ? Icons.fullscreen_exit : Icons.fullscreen),
         onPressed: () {
           final nuevo = !completo;
@@ -1061,6 +1078,40 @@ class _PantallaVideoState extends State<PantallaVideo> {
           left: 8,
           child: Icon(Icons.surround_sound,
               color: Color(0xFF2DD4A7), size: 18),
+        ),
+      // RUEDITA DE SCROLL flotante (lleva la PC arriba/abajo con un dedo)
+      if (rueda)
+        Positioned(
+          right: 2,
+          top: 90,
+          bottom: 90,
+          width: 42,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragUpdate: _ruedaDrag,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xB3131A2B),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFF4F83FF), width: 1.5),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.arrow_drop_up, color: Colors.white54, size: 22),
+                  Expanded(
+                    child: Center(
+                      child: RotatedBox(
+                        quarterTurns: 1,
+                        child: Text("RUEDA", style: TextStyle(fontSize: 9, color: Colors.white54, letterSpacing: 1)),
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.arrow_drop_down, color: Colors.white54, size: 22),
+                ],
+              ),
+            ),
+          ),
         ),
     ]);
   }
