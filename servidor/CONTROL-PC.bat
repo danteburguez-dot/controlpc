@@ -1,7 +1,23 @@
 @echo off
 title CONTROL PC - MENU MAESTRO
 chcp 65001 >nul
-cd /d "%~dp0"
+
+REM ---------------------------------------------------------------
+REM Encuentra la carpeta del servidor automaticamente:
+REM   1) si este .bat esta en la carpeta servidor, usa esa
+REM   2) sino, usa la ruta fija de esta PC
+REM ---------------------------------------------------------------
+set "BASE=%~dp0"
+if not exist "%BASE%servidor.py" set "BASE=C:\Users\Dante burguez\Downloads\Proyecto predeterminado\ControlPC\servidor\"
+if not exist "%BASE%servidor.py" (
+  echo [X] No encuentro la carpeta del servidor de Control PC.
+  echo     Mueve este .bat a la carpeta servidor del proyecto.
+  pause
+  exit /b 1
+)
+
+REM soporte de modo directo por argumento (p.ej. elevacion de si mismo)
+if "%~1"=="/firewall" goto :firewall_elevado
 
 :menu
 cls
@@ -10,7 +26,7 @@ echo              CONTROL PC - MENU MAESTRO
 echo ============================================================
 echo.
 echo   [1] Abrir el servidor (normal)
-echo   [2] Servidor como ADMINISTRADOR (permite [o] rechazar UAC desde telefono)
+echo   [2] Servidor como ADMINISTRADOR (permite rechazo UAC desde telefono)
 echo   [3] Login: ver contrasena / renovarla (Y/N) - con QR
 echo   [4] FIREWALL: permitir el telefono (si no conecta, corre ESTO)
 echo   [5] Autoarranque completo (server al encender la PC)
@@ -31,37 +47,44 @@ if "%OPC%"=="0" exit /b 0
 goto :menu
 
 :iniciar
-call "%~dp0iniciar.bat"
+call "%BASE%iniciar.bat"
 goto :menu
 
 :admin
-call "%~dp0iniciar_admin.bat"
+call "%BASE%iniciar_admin.bat"
 goto :menu
 
 :login
-call "%~dp0login.bat"
+call "%BASE%login.bat"
 goto :menu
 
 :firewall
-if exist "%~dp0 1-permitir_telefono.bat" call "%~dp01-permitir_telefono.bat"
-if not exist "%~dp01-permitir_telefono.bat" (
-  powershell -NoProfile -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','C:\Users\Dante burguez\Downloads\Proyecto predeterminado\ControlPC\servidor\regla_firewall.ps1'"
-  echo [OK] regla aplicada si aceptaste el permiso.
-  timeout /t 3 >nul
+net session >nul 2>&1
+if errorlevel 1 (
+  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '/firewall'"
+  exit /b
 )
+:firewall_elevado
+echo Agregando la regla del Firewall para el telefono...
+netsh advfirewall firewall add rule name="Control PC" dir=in action=allow protocol=TCP localport=8566
+echo.
+netsh advfirewall firewall show rule name="Control PC" | findstr /i "8566"
+echo.
+echo ==================================================
+echo   REGLA CREADA. El telefono ya puede conectar.
+echo ==================================================
+pause
 goto :menu
 
 :auto
-call "%~dp0autoinicio_todos.bat"
+call "%BASE%autoinicio_todos.bat"
 goto :menu
 
 :tscale
-call "%~dp0activar_tailscale.bat"
+call "%BASE%activar_tailscale.bat"
 goto :menu
 
 :auditia
-if exist "%~dp02-auditoria.bat" call "%~dp02-auditoria.bat"
-if not exist "%~dp02-auditoria.bat" (
-  powershell -NoProfile -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','C:\Users\Dante burguez\Downloads\Proyecto predeterminado\ControlPC\servidor\regla_firewall.ps1'"
-)
+call "%BASE% 2-auditoria.bat"
+pause
 goto :menu
