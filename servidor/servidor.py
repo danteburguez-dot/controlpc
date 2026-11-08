@@ -60,6 +60,95 @@ ARCHIVO_CONFIG = BASE / "config.json"
 
 PUERTO_DEF = 8566
 VERSION_APP = "1.8"
+
+# script PowerShell 5.1 + WinRT que enciende el hotspot de Windows (sin .bat ni clics)
+PS_HOTSPOT = r'''
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+function Await($WinRtTask, $ResultType) {
+  $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+  $netTask = $asTask.Invoke($null, @($WinRtTask))
+  $netTask.Wait(-1) | Out-Null
+  $netTask.Result
+}
+$perfil = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+if ($perfil -eq $null) { Write-Host "ERROR: sin red en la PC"; exit 1 }
+$tether = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($perfil)
+$SSID = "CONTROL-PC-HOTSPOT"
+$CLAVE = "CP123456789"
+if ([string]::IsNullOrWhiteSpace($tether.ConfigurationProfile.Ssid)) {
+  $conf = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration]::new()
+  $conf.Ssid = $SSID
+  $conf.Passphrase = $CLAVE
+  try { $o = $tether.ConfigureAccessPointAsync($conf); Start-Sleep -Milliseconds 2500; $null = $o.GetResults() } catch { Write-Host ("cfg err: " + $_.Exception.Message) }
+}
+if ($tether.TetheringOperationalState -eq 1) {
+  Write-Host "hotspot: ya estaba ACTIVADO"
+} else {
+  try { $o2 = $tether.StartTetheringAsync(); Start-Sleep -Milliseconds 3000; $null = $o2.GetResults(); Write-Host "hotspot: encendido OK" } catch { Write-Host ("start err: " + $_.Exception.Message) }
+}
+$finalS = [string]$tether.ConfigurationProfile.Ssid
+$finalC = [string]$tether.ConfigurationProfile.Passphrase
+if ([string]::IsNullOrWhiteSpace($finalS)) { $finalS = $SSID }
+if ([string]::IsNullOrWhiteSpace($finalC)) { $finalC = $CLAVE }
+Set-Content -Path 'hotspot_state.txt' -Encoding ASCII -Value ("SSID=" + $finalS + " CLAVE=" + $finalC)
+Write-Host ("HOTSPOT ON - SSID: $finalS - clave: $finalC - IP: 192.168.137.1")
+'''
+
+def _activar_hotspot_automatico():
+    """Enciende el hotspot de Windows automáticamente al arrancar el servidor"""
+    if os.name != "nt":
+        return
+    try:
+        temp = tempfile.gettempdir()
+        ruta = os.path.join(temp, "controlpc_hotspot.ps1")
+        with open(ruta, "w", encoding="ascii") as f:
+            f.write(PS_HOTSPOT)
+        indic = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Sta", "-File", ruta],
+            capture_output=True, timeout=45, creationflags=indic)
+    except Exception:
+        pass
+
+def _info_hotspot() -> dict:
+    """Lee el SSID/clave del hotspot desde el registro icssvc (decodifica UTF-16)."""
+    if os.name != "nt":
+        return {}
+    try:
+        import winreg
+        clave_reg = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            "SYSTEM\\CurrentControlSet\\Services\\icssvc\\Settings")
+        datos, _ = winreg.QueryValueEx(clave_reg, "PrivateConnectionSettings")
+        winreg.CloseKey(clave_reg)
+        if not datos:
+            return {}
+        todo = SecureString_decode(datos) if False else None
+    except Exception:
+        pass
+    return {}
+
+def _descodificar_hotspot_reg() -> dict:
+    if os.name != "nt":
+        return {}
+    try:
+        import winreg
+        clave_reg = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            "SYSTEM\\CurrentControlSet\\Services\\icssvc\\Settings")
+        datos, _ = winreg.QueryValueEx(clave_reg, "PrivateConnectionSettings")
+        winreg.CloseKey(clave_reg)
+        if not datos:
+            return {}
+        texto = datos.decode("utf-16-le", "replace")
+        valores = re.findall(r"[A-Za-z0-9\-]{8,40}", texto)
+        valores = list(dict.fromkeys(valores))  # únicos en orden
+        if len(valores) >= 2:
+            return {"ssid": valores[0], "clave": valores[1]}
+        return {}
+    except Exception:
+        return {}
 REPO_PUBLICO = "https://api.github.com/repos/danteburguez-dot/controlpc/releases/latest"
 # nivel -> (ancho máximo, calidad JPEG)
 CALIDADES = {0: (960, 45), 1: (1280, 55), 2: (1600, 68), 3: (1920, 78)}
@@ -1663,6 +1752,21 @@ if __name__ == "__main__":
 
     import uvicorn
     _rotar_contrasena_si_corresponde(ventana=False)
+    if not _puerto_ocupado(int(CFG.get("puerto", PUERTO_DEF))):
+        # añade la tarea programada ONLOGON para que el servidor arranque solo
+        # SIN .bat: la tarea corre el servidor directamente con la salida a un log
+        try:
+            linea = "cmd /c python servidor.py > " + os.path.join(os.path.dirname(sys.executable), "salida_auto.txt") + " 2>&1"
+            schtasks = subprocess.run(
+                ["schtasks", "/Create", "/F", "/TN", "ControlPC arranque",
+                 "/SC", "ONLOGON", "/TR", linea],
+                capture_output=True, timeout=20)
+            if schtasks.returncode == 0:
+                _agregar_aviso("info", "Autoarranque configurado (sin .bat): el server arranca en el login")
+        except Exception:
+            pass
+    # enciende el Hotspot de Windows automáticamente (sin .bat, sin router)
+    threading.Thread(target=_activar_hotspot_automatico, daemon=True).start()
     _banner()
     _agregar_aviso("info", "Servidor Control PC listo ✓ conecta el teléfono desde el QR")
     threading.Thread(target=_avisar_actualizacion, daemon=True).start()
