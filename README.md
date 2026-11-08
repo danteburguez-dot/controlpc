@@ -208,53 +208,64 @@ La **misma PC** se anuncia con distinta dirección según por dónde hables con 
 > 💡 Las apps teléfonos a veces **bloquean el Wi-Fi local** de fábrica (aislamiento de aparatos):
 > si el Wi-Fi de casa te falla, usa el **hotspot de la PC** (el camino garantizado) o Tailscale.
 
-## 🌍 Desde cualquier lugar del mundo — Tailscale
+## 🌍 Desde cualquier lugar del mundo — col conectar la pantalla de la PC (nivel de TAILSCALE)
 
-**Esto es el paso final que hace que el sistema funcione desde CUALQUIER lugar, sin importar la red.**
+**Esto es lo mejor de Control PC: cambia de país, red o ciudad y tu teléfono alcanza la pantalla/lOS APPS de tu PC con el túnel externo de Tailscale.**
 
-### En la PC (una sola vez):
+> IMPORTANTE: prue una vez y listo. Tailscale queda cifrado y cargado para SIEMPRE en los dos aparatos. Es gratis para uso personal y NO requiere anular ninguna seguridad del router.
 
-1. Instala Tailscale:
-   - Con el menú maestro → opción **[6]** (o `activar_tailscale.bat`)
-   - O `winget install -e --id Tailscale.Tailscale`
-2. Ejecuta el **login** (abre tu navegador):
+### 🖥️ PASO 1 — En la PC
+
+1. Descarga e instala Tailscale (gratuito):
+   - La forma más fácil: doble clic en **`CONTROL-PC.bat`** → opción **[6] Tailscale**.
+   - Manual en terminal: **`winget install -e --id Tailscale.Tailscale`**
+   - O desde https://tailscale.com/download
+2. Haz el login (se abre tu navegador):
    ```
    "C:\Program Files\Tailscale\tailscale.exe" up
+   → entra con tu cuenta de Google/GitHub/Apple y acepta
    ```
-   → entra con tu cuenta (Google/GitHub/Apple) y acepta.
-3. Verifica la IP que recibió tu PC:
+3. Verifica la dirección IP de tu PC:
    ```
    "C:\Program Files\Tailscale\tailscale.exe" ip -4
-   → ej: 100.126.1.3
+   → devolverá una IP tipo: 100.126.1.3
    ```
-   (La IP 100.x.y.z **no cambia nunca** — es la dirección permanente de tu PC en la red Tailscale.)
+   Esta IP es fija: NO cambia nunca (es la dirección permanente de la PC en la red Tailscale).
 
-### En el teléfono (una sola vez):
+### 📱 PASO 2 — En el teléfono
 
-1. Instala la app **Tailscale** desde la Play Store (es la oficial, con candado).
-2. Ábrela → **Log in** → entra con **la MISMA cuenta** que en la PC.
-3. Activa el botón **"Connected"** en la app.
-4. En la lista de dispositivos verás tu PC (`desktop-ci4lc9m`) junto a tu teléfono.
+1. Descarga la app **Tailscale** en la Play Store (búsqueda: "Tailscale", icono de biblioteca con candado).
+2. Ábrelo y haz el mismo login: entra con la MISMA cuenta que usó la PC (un solo toca + autorización).
+3. Activa el botón **"Connected"** (Toggle ON) en la app.
+4. Verás en la lista de dispositivos tu PC y tu teléfono juntos (dos nombres).
 
-### En la APK "Control PC" (desde cualquier lugar):
+### 📲 PASO 3 — Ver la pantalla de la PC desde el teléfono (desde dónde sea)
+
+Con el servidor Control PC **abierto en la PC** (doble clic en `iniciar` o autoarranque activo):
+
+1. Abre la APK de tu teléfono "Control PC".
+2. En la pantalla de acceso escribe:
+   - **Dirección IP**: `100.x.y.z` ← la IP Tailscale que imprimió tu PC (ej: `100.126.1.3`)
+   - **Puerto**: `8566`
+   - **Contraseña**: la vigente del servidor (aparece en la consola de la PC o con `login.bat`)
+3. Conectar → la pantalla de tu PC se ve en el teléfono en vivo.
+4. Para pantalla completa (solo la PC acostado sin botones): pestaña Pantalla → botón **⛶**.
+
+### ¿Por qué funciona el cambio de red?
+
+- El teléfono puede estar en **cualquier red/distintos nacionales**: 4G, 5G, Wi-Fi ajeno (hotel, casa amiga, aeropuerto), otra ciudad/country.
+- El teléfono NO debe estar en el mismo Wi-Fi que la PC: envía via el túnel Tailscale que manda el vídeo en cifrado extremo a extremo (WireGuard).
+- NO hay que abrir puertos del router ni tocar configuración de ninguna red.
+
+### 🩺 Comprobar el túnel desde la PC:
 
 ```
-Dirección IP:    100.x.y.z    (la IP Tailscale de tu PC)
-Puerto:          8566
-Contraseña:      la vigente
-→ Conectar → 🎉
+"C:\Program Files\Tailscale\tailscale.exe" status        → de listar 2+ equipos con estado "active"
+"C:\Program Files\Tailscale\tailscale.exe" ping 100.x.y.z → debe decir "pong"
+"C:\Program Files\Tailscale\tailscale.exe" netcheck      → calidad y tipo del túnel
 ```
 
-Funciona con **datos móviles, Wi-Fi ajeno, avión, hotel, otro país…** — es un túnel
-cifrado extremo a extremo (WireGuard) que **no depende del router** ni de puertos
-abiertos. El servidor en tu PC debe seguir corriendo (autoarranques ya configurados).
-
-### Verificar desde la PC:
-
-```
-"C:\Program Files\Tailscale\tailscale.exe" status       (debe listar 2+ equipos)
-"C:\Program Files\Tailscale\tailscale.exe" netcheck     (calidad del túnel)
-```
+Si solo aparece tu PC: el teléfono aún no entró a la red Tailscale (app no instalada o cuenta diferente).
 
 ## 📦 APK nativa (opcional)
 
