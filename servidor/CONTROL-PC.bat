@@ -61,29 +61,24 @@ echo =========================================
 echo    CONTROL PC - iniciando servidor...
 echo =========================================
 echo.
-where python >nul 2>nul
-if errorlevel 1 (
-  echo [X] Python no esta instalado o no esta en el PATH.
-  echo     Usa la opcion [9] de este menu para instalarlo automaticamente.
+call :elige_python
+if "%PYOK%"=="none" (
+  echo [X] No hay un Python con las librerias de Control PC en esta PC.
+  echo     Corre la opcion [9] (INSTALAR TODO) y vuelve a intentarlo.
   pause
   goto :menu
 )
-echo [1/2] Comprobando librerias (la primera vez puede tardar un poco)...
-python -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode" 2>nul
-if errorlevel 1 (
-  echo       Instalando librerias...
-  python -m pip install -r requisitos.txt --quiet --no-input
-  if errorlevel 1 (
-    echo [X] No se pudieron instalar las librerias. Verifica tu conexion y ejecuta:
-    echo     python -m pip install -r requisitos.txt
-    pause
-    goto :menu
-  )
-)
-echo [OK] Librerias listas.
-echo [2/2] Abriendo servidor (cierra la ventana para detenerlo)...
-:iniciar_loop
+echo [OK] Python listo (modo: %PYOK%).
+echo Abriendo servidor (cierra la ventana para detenerlo)...
+set "BUCLE=iniciar_loop_plain"
+if "%PYOK%"=="py312" set "BUCLE=iniciar_loop_py312"
+goto %BUCLE%
+:iniciar_loop_plain
 python servidor.py
+goto iniciar_check
+:iniciar_loop_py312
+"%PYEXE%" -3.12 servidor.py
+:iniciar_check
 if "%errorlevel%" EQU "3" (
   echo [OK] Ya hay otro servidor corriendo. Esta copia termina sin cambiar nada.
   pause
@@ -92,7 +87,7 @@ if "%errorlevel%" EQU "3" (
 echo.
 echo El servidor se cerro inesperadamente. Reiniciando en 3 segundos...
 timeout /t 3 /nobreak >nul
-goto iniciar_loop
+goto %BUCLE%
 
 :respaldo_auto
 echo Autoarranque pendiente 60 s ^(respaldo: si el servidor de admin nunca arranco)...
@@ -112,20 +107,24 @@ cd /d "%BASE%"
 REM Regla de firewall de una vez (siendo administrador no vuelve a preguntar)
 netsh advfirewall firewall show rule name="Control PC" >nul 2>&1
 if errorlevel 1 netsh advfirewall firewall add rule name="Control PC" dir=in action=allow protocol=TCP localport=8566 >nul 2>&1
-where python >nul 2>nul
-if errorlevel 1 (
-  echo [X] Python no esta instalado. Usa la opcion [9] de este menu.
+call :elige_python
+if "%PYOK%"=="none" (
+  echo [X] No hay un Python con las librerias de Control PC.
+  echo     Corre la opcion [9] (INSTALAR TODO) primero.
   pause
   exit /b 1
 )
-python -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode" 2>nul
-if errorlevel 1 (
-  echo [1/2] Instalando librerias (primera vez)...
-  python -m pip install -r requisitos.txt --quiet --no-input
-)
-echo [2/2] Abriendo servidor como ADMINISTRADOR (cierra la ventana para detenerlo)...
-:admin_loop
+echo [OK] Python listo (modo: %PYOK%).
+echo Abriendo servidor como ADMINISTRADOR (cierra la ventana para detenerlo)...
+set "BUCLE=admin_loop_plain"
+if "%PYOK%"=="py312" set "BUCLE=admin_loop_py312"
+goto %BUCLE%
+:admin_loop_plain
 python servidor.py
+goto admin_check
+:admin_loop_py312
+"%PYEXE%" -3.12 servidor.py
+:admin_check
 set "EC=%errorlevel%"
 if "%EC%" EQU "3" (
   echo [OK] Ya habia otro servidor corriendo. Este sale sin cambiar nada.
@@ -135,21 +134,21 @@ if "%EC%" EQU "3" (
 echo.
 echo El servidor se cerro. Reiniciando en 3 segundos...
 timeout /t 3 /nobreak >nul
-goto admin_loop
+goto %BUCLE%
 
 :login
-where python >nul 2>nul
-if errorlevel 1 (
-  echo [X] Python no esta instalado. Usa la opcion [9] de este menu.
+cd /d "%BASE%"
+call :elige_python
+if "%PYOK%"=="none" (
+  echo [X] No hay un Python con las librerias. Corre la opcion [9] (INSTALAR TODO).
   pause
   goto :menu
 )
-cd /d "%BASE%"
 :login_menu
 cls
 REM Muestra: contrasena actual + dias restantes + QR RAPIDO (entra sin escribir)
 REM y QR NORMAL (pide la clave). Cambia con la clave porque la incluye.
-python servidor.py --loginqr
+if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 servidor.py --loginqr ) else python servidor.py --loginqr
 echo.
 echo   Quieres obtener una nueva contrasena? Y/N
 set "RESP="
@@ -170,7 +169,7 @@ set /p MODO=<"%TEMP%\cp_rotar.txt"
 if "%MODO%"=="servidor" (
   echo   [OK] El servidor en ejecucion genero la nueva clave.
 ) else (
-  python servidor.py --rotar
+  if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 servidor.py --rotar ) else python servidor.py --rotar
   if errorlevel 1 (
     echo [X] No se pudo renovar.
     pause
@@ -243,13 +242,13 @@ pause
 goto :menu
 
 :tscale
-where python >nul 2>nul
-if errorlevel 1 (
-  echo [X] Python no esta instalado. Usa la opcion [9] de este menu.
+cd /d "%BASE%"
+call :elige_python
+if "%PYOK%"=="none" (
+  echo [X] No hay un Python con las librerias. Corre la opcion [9] (INSTALAR TODO).
   pause
   goto :menu
 )
-cd /d "%BASE%"
 where tailscale >nul 2>nul
 if errorlevel 1 (
   if exist "C:\Program Files\Tailscale\tailscale.exe" (
@@ -277,7 +276,7 @@ if errorlevel 1 (
   goto :menu
 )
 echo [3/3] Abriendo la pantalla con IP y QR para conectar desde cualquier lugar:
-python servidor.py --tailscale
+if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 servidor.py --tailscale ) else python servidor.py --tailscale
 echo.
 echo PASOS FINALES:
 echo   1) En el telefono: instala la app Tailscale e inicia sesion con la MISMA cuenta.
@@ -321,43 +320,77 @@ goto :menu
 cd /d "%BASE%"
 echo ============================================================
 echo    INSTALAR TODAS LAS DEPENDENCIAS DE CONTROL PC
-echo     (Python + las 12 librerias del servidor)
+echo    (Python 3.12 estable + las 12 librerias ya compiladas)
 echo ============================================================
 echo.
-echo [1/3] Poniendo Python...
-where python >nul 2>nul
-if not errorlevel 1 (
-  echo       Python ya esta instalado:
-  python --version
-  goto dep_libs
-)
+echo [1/3] Poniendo un Python compatible...
+call :elige_python
+if "%PYOK%"=="py312" goto dep_libs_instalar
+if "%PYOK%"=="plain" goto dep_prueba_full
+echo       No hay ninguno util; instalando Python 3.12 (tiene TODOS los compilados)...
 where winget >nul 2>nul
 if errorlevel 1 goto dep_py_api
-winget install -e --id Python.Python.3 --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
-goto dep_py_path
+winget install -e --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+goto dep_py_dete
 
 :dep_py_api
-powershell -NoProfile -Command "$f=[IO.Path]::Combine([IO.Path]::GetTempPath(),'python-setup.exe'); $v=(irm 'https://endoflife.date/api/python.json')[0].latest; Write-Host ('Version mas nueva: ' + $v); iwr -UseBasicParsing ('https://www.python.org/ftp/python/'+$v+'/python-'+$v+'-amd64.exe') -OutFile $f; & $f /quiet InstallAllUsers=0 PrependPath=1 Include_test=0"
+echo [i] winget no esta; descargando el instalador oficial de Python 3.12...
+powershell -NoProfile -Command "$f=[IO.Path]::Combine([IO.Path]::GetTempPath(),'python-312.exe'); iwr -UseBasicParsing 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $f; & $f /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0"
 
-:dep_py_path
-REM refresca el PATH de ESTA ventana (el instalador cambio el del sistema)
-for /d %%d in ("%LOCALAPPDATA%\Programs\Python\Python3*") do set "PATH=%PATH%;%%d;%%d\Scripts"
-for /d %%d in ("%ProgramFiles%\Python3*") do set "PATH=%PATH%;%%d;%%d\Scripts"
-where python >nul 2>nul
-if errorlevel 1 (
-  echo [X] Python no se me ve. Cierra el maestro y abre de nuevo.
+:dep_py_dete
+REM refresca la ruta del launcher de ESTA ventana
+set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Python\Launcher;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;%LOCALAPPDATA%\Programs\Python\Python312"
+for /f "delims=" %%p in ('where py 2^>nul') do set "PYEXE=%%p"
+if not defined PYEXE (
+  echo [X] No encontre el Python 3.12. Cierra el maestro y abre de nuevo.
   pause
   goto :menu
 )
-echo [OK] Python listo:
-python --version
+"%PYEXE%" -3.12 --version >nul 2>&1
+if errorlevel 1 (
+  echo [X] Python 3.12 no quedo usable. Reinicia la PC y corre [9] otra vez.
+  pause
+  goto :menu
+)
+set "PYOK=py312"
+echo [OK] Python 3.12 listo.
 
-:dep_libs
+:dep_libs_instalar
 echo [2/3] Instalando las 12 librerias del servidor (demora unos minutos)...
+if "%PYOK%"=="py312" goto dep_libs_py312
 python -m pip install --upgrade pip --quiet --no-input
 python -m pip install -r "%BASE%requisitos.txt" --no-input
+goto dep_libs_check
+:dep_libs_py312
+"%PYEXE%" -3.12 -m pip install --upgrade pip --quiet --no-input
+"%PYEXE%" -3.12 -m pip install -r "%BASE%requisitos.txt" --no-input
+:dep_libs_check
+if not errorlevel 1 goto dep_prueba_full
+echo.
+echo [i] Reintentando solo con paquetes YA compilados (sin herramientas C++)...
+if "%PYOK%"=="py312" goto dep_ruedas_py312
+python -m pip install -r "%BASE%requisitos.txt" --no-input --only-binary=:all:
+goto dep_ruedas_check
+:dep_ruedas_py312
+"%PYEXE%" -3.12 -m pip install -r "%BASE%requisitos.txt" --no-input --only-binary=:all:
+:dep_ruedas_check
+if not errorlevel 1 goto dep_prueba_full
+echo.
+echo [X] pip no pudo: a esa version de Python le faltan compilaciones para Windows.
+echo     Son gratis:
+echo     https://visualstudio.microsoft.com/visual-cpp-build-tools/
+echo     Instalalas y corre este [9] de nuevo.
+pause
+goto :menu
+
+:dep_prueba_full
 echo [3/3] Comprobando que todo importe...
+if "%PYOK%"=="py312" goto dep_prueba_py312
 python -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api"
+goto dep_prueba_check
+:dep_prueba_py312
+"%PYEXE%" -3.12 -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api"
+:dep_prueba_check
 if errorlevel 1 (
   echo [X] Fallo algo de arriba. Corre este mismo [9] otra vez.
   pause
@@ -367,6 +400,32 @@ echo.
 echo ==================================================
 echo   TODO LISTO. Esta PC ya puede correr el
 echo   servidor: usa la opcion [1] (o [2] admin).
+echo   Las opciones ahora usan este mismo Python
+echo   automaticamente (modo: %PYOK%).
 echo ==================================================
 pause
 goto :menu
+
+:elige_python
+REM Elige un Python que SI tenga las librerias de Control PC:
+REM   PYOK=plain -> el "python" del PATH | PYOK=py312 -> launcher py (3.12) | PYOK=none -> nada sirve
+REM   ( con py312 tambien deja en PYEXE la ruta del launcher )
+set "PYOK=none"
+set "PYEXE="
+where python >nul 2>nul
+if errorlevel 1 goto elige_py312
+python -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1
+if errorlevel 1 goto elige_py312
+set "PYOK=plain"
+goto :eof
+:elige_py312
+for /f "delims=" %%p in ('where py 2^>nul') do (
+  "%%p" -3.12 -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1
+  if not errorlevel 1 (
+    set "PYEXE=%%p"
+    set "PYOK=py312"
+  )
+)
+if "%PYOK%"=="py312" goto :eof
+set "PYOK=none"
+goto :eof

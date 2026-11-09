@@ -69,7 +69,7 @@ por si acaso; **esta es la razón número 1** por la que "no conecta" aún.)
 | **[6]** | 🌍 **Tailscale**: lo instala si falta, entra a tu cuenta y muestra la IP `100.x.y.z` + QR — acceso **desde cualquier lugar del mundo**. |
 | **[7]** | 🕵️ **Auditoría de paquetes**: 90 s grabando los intentos de conexión del teléfono → deja el resultado en `servidor\eventos_8566.txt`. |
 | **[8]** | 📶 **HOTSPOT** automático de Windows: el teléfono entra directo a la red de la PC **sin router**. |
-| **[9]** | 📦 **INSTALAR TODO en una PC nueva**: pone la última versión de **Python** (winget, o el instalador oficial con *"Add to PATH"* — refrescando el PATH de la misma ventana) **+ las 12 librerías** de `requisitos.txt` (fastapi, uvicorn, mss, Pillow, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, pywin32) y comprueba que todo importe. Con esto la PC queda lista para usar [1]. |
+| **[9]** | 📦 **INSTALAR TODO en una PC nueva**: instala **Python 3.12** — la estable que trae *todas* las librerías de Windows ya compiladas (evita el error de "Microsoft C++ Build Tools" con las Python recién salidas) — **+ las 12 librerías** de `requisitos.txt`, con reintentos solo de ruedas y comprobación de imports al final. Después, todas las opciones ([1]/[2]/[3]/[6]) usan ese Python automáticamente. |
 
 - Los modos especiales `--loginqr`, `--tailscale` y `--rotar` de `servidor.py` son los que el maestro ejecuta internamente.
 
