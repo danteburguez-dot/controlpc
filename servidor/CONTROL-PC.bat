@@ -384,27 +384,50 @@ pause
 goto :menu
 
 :dep_prueba_full
-echo [3/3] Comprobando que todo importe...
-if "%PYOK%"=="py312" goto dep_prueba_py312
-python -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api"
-goto dep_prueba_check
-:dep_prueba_py312
-"%PYEXE%" -3.12 -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api"
-:dep_prueba_check
-if errorlevel 1 (
-  echo [X] Fallo algo de arriba. Corre este mismo [9] otra vez.
-  pause
-  goto :menu
+echo [3/3] Comprobando cada una de las 12 y reparando lo que falla...
+set "FALLOS="
+for %%p in ("fastapi fastapi" "uvicorn uvicorn" "mss mss" "PIL Pillow" "psutil psutil" "pyautogui pyautogui" "qrcode qrcode" "numpy numpy" "soundcard soundcard" "pycaw pycaw" "comtypes comtypes" "win32api pywin32") do (
+  for /f "tokens=1,2" %%a in (%%p) do call :dep_toca %%a %%b
 )
+if not defined FALLOS goto dep_todo_bien
+echo.
+echo [X] Estas librerias siguen rotas en esta PC:%FALLOS%
+echo     Instala gratis las herramientas de C++ de Microsoft y vuelve a correr [9]:
+echo     https://visualstudio.microsoft.com/visual-cpp-build-tools/
+pause
+goto :menu
+
+:dep_todo_bien
 echo.
 echo ==================================================
-echo   TODO LISTO. Esta PC ya puede correr el
-echo   servidor: usa la opcion [1] (o [2] admin).
-echo   Las opciones ahora usan este mismo Python
-echo   automaticamente (modo: %PYOK%).
+echo   TODO LISTO (las 12 importan bien). Esta PC
+echo   ya puede correr el servidor:
+echo   opcion [1] (o [2] admin). Todas las opciones
+echo   usan este mismo Python (modo: %PYOK%).
 echo ==================================================
 pause
 goto :menu
+
+:dep_toca
+REM %1 = nombre para "import X" | %2 = nombre del paquete en pip
+if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 -c "import %~1" 2>nul ) else ( python -c "import %~1" 2>nul )
+if not errorlevel 1 (
+  echo   [OK] %~1
+  goto :eof
+)
+echo   reparando %~2 ...
+if "%PYOK%"=="py312" "%PYEXE%" -3.12 -m pip install --upgrade --only-binary=:all: %~2 >nul 2>&1
+if "%PYOK%"=="py312" goto dep_toca_py
+python -m pip install --upgrade --only-binary=:all: %~2 >nul 2>&1
+:dep_toca_py
+if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 -c "import %~1" 2>nul ) else ( python -c "import %~1" 2>nul )
+if errorlevel 1 (
+  call set "FALLOS=%%FALLOS%% %~1"
+  echo   [X] %~1 sigue roto
+  goto :eof
+)
+echo   [OK] %~1 (reparada)
+goto :eof
 
 :elige_python
 REM Elige un Python que SI tenga las librerias de Control PC:
