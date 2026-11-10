@@ -347,6 +347,7 @@ echo [2/3] Instalando las 12 librerias del servidor (demora unos minutos)...
 set "PYINS="
 if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "PYINS=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
 if not defined PYINS if exist "%ProgramFiles%\Python312\python.exe" set "PYINS=%ProgramFiles%\Python312\python.exe"
+if not defined PYINS for /d %%d in ("%LOCALAPPDATA%\Python\pythoncore-3.12-*") do if not defined PYINS set "PYINS=%%d\python.exe"
 if not defined PYINS set "PYINS=python"
 echo      usando: %PYINS%
 "%PYINS%" -m pip install --upgrade pip --quiet --no-input
@@ -417,62 +418,43 @@ echo   [OK] %~1 (reparada)
 goto :eof
 
 :elige_python
-REM Elige un Python que SI tenga las librerias de Control PC:
-REM   PYOK=plain  -> usar "python" del PATH (tiene las 12)
-REM   PYOK=custom -> usar PYEXE (PYMODE: "py"=launcher 3.12 | "direct"=python.exe) que SI las tiene
+REM PYOK lo resuelve elige_python.py (cero parsing batch: lee archivos planos):
+REM   PYOK=custom -> PYEXE (PYMODE "py"=launcher 3.12 | "direct"=exe) que SI tiene las 12
 REM   PYOK=none   -> nada sirve (correr [9])
 set "PYOK=none"
 set "PYEXE="
 set "PYMODE="
-where python >nul 2>nul
-echo [elige] where python = %errorlevel% >> "%PLOG%"
-if errorlevel 1 goto elige_alt
-python -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1
-set "EC=%errorlevel%"
-echo [elige] import python = %EC% >> "%PLOG%"
-if "%EC%"=="0" (
-  set "PYOK=plain"
-  echo [elige] resultado: plain >> "%PLOG%"
-  goto :eof
+set "PYEXE8="
+if not exist "%BASE%elige_python.py" goto elige_fin
+del "%TEMP%\cp_elige_ok.txt" "%TEMP%\cp_elige_mod.txt" "%TEMP%\cp_elige_exe.txt" >nul 2>&1
+python "%BASE%elige_python.py" >nul 2>&1
+set /p "LG1=" < "%TEMP%\cp_elige_ok.txt" 2>nul
+echo [elige] finder dice: [%LG1%] >> "%PLOG%"
+if not defined LG1 goto elige_intenta_launcher
+if "%LG1%"=="CUSTOM" call :elige_leer
+goto elige_fin
+
+:elige_intenta_launcher
+REM caso: no hay "python" en PATH pero si el launcher con el 3.12 ya preparado
+if exist "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" (
+  set "LG1="
+  "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" -3.12 "%BASE%elige_python.py" >nul 2>nul
+  set /p "LG1=" < "%TEMP%\cp_elige_ok.txt" 2>nul
 )
-:elige_alt
-echo [elige] buscando interpretes alternativos (sin stubs de la tienda)... >> "%PLOG%"
-where py > "%TEMP%\cp_py.txt" 2>nul
-echo [elige] where py = %errorlevel% >> "%PLOG%"
-for /f "delims=" %%p in (%TEMP%\cp_py.txt) do call :elige_testa "%%p" py
-if exist "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" call :elige_testa "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" py
-if "%PYOK%"=="custom" goto elige_listo
-for /d %%d in ("%LOCALAPPDATA%\Programs\Python\Python3*") do call :elige_testa "%%d\python.exe" direct
-if "%PYOK%"=="custom" goto elige_listo
-for /d %%d in ("%ProgramFiles%\Python3*") do call :elige_testa "%%d\python.exe" direct
-if "%PYOK%"=="custom" goto elige_listo
-set "PYOK=none"
-echo [elige] resultado: none >> "%PLOG%"
-goto :eof
-:elige_listo
-echo [elige] resultado: custom (%PYMODE% %PYEXE%) >> "%PLOG%"
+echo [elige] segundo intento con launcher: [%LG1%] >> "%PLOG%"
+if "%LG1%"=="CUSTOM" call :elige_leer
+goto elige_fin
+
+:elige_leer
+set /p "PYMODE=" < "%TEMP%\cp_elige_mod.txt" 2>nul
+set /p "PYEXE=" < "%TEMP%\cp_elige_exe.txt" 2>nul
+if not defined PYEXE goto :eof
+for %%q in ("%PYEXE%") do set "PYEXE8=%%~sq"
+set "PYOK=custom"
 goto :eof
 
-:elige_testa
-REM %1 = exe entre comillas | %2 = modo: py (usa -3.12) | direct (sin version)
-set "CAND=%~1"
-if not "%CAND%"=="%CAND:WindowsApps=%" (
-  echo [elige] descartado, alias de la tienda: %CAND% >> "%PLOG%"
-  goto :eof
-)
-if not exist "%CAND%" (
-  echo [elige] no existe: %CAND% >> "%PLOG%"
-  goto :eof
-)
-if "%PYOK%"=="custom" goto :eof
-if "%~2"=="py" ( "%CAND%" -3.12 -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1 ) else ( "%CAND%" -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1 )
-set "EC=%errorlevel%"
-echo [elige] probe %~2 de %CAND% = %EC% >> "%PLOG%"
-if not "%EC%"=="0" goto :eof
-set "PYEXE=%CAND%"
-set "PYMODE=%~2"
-for %%q in ("%CAND%") do set "PYEXE8=%%~sq"
-set "PYOK=custom"
+:elige_fin
+echo [elige] resultado: %PYOK% %PYMODE% %PYEXE% >> "%PLOG%"
 goto :eof
 
 :pyrun
