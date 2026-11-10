@@ -8,7 +8,7 @@ import os, sys, glob, subprocess, tempfile
 
 TMP = tempfile.gettempdir()
 LOG = os.path.join(TMP, "maestro_debug.txt")
-MOD = "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api"
+MOD = "import comtypes, pycaw, win32api, soundcard, PIL, psutil, pyautogui, qrcode, numpy, mss, fastapi, uvicorn"
 
 def log(t):
     try:
