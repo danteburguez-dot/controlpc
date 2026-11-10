@@ -25,11 +25,26 @@ def wfile(name, txt):
         pass
 
 def probe(path, args):
+    ok = False
+    detalle = ""
     try:
         r = subprocess.run([path] + args + ["-c", MOD], capture_output=True, timeout=60)
-        return r.returncode == 0
-    except Exception:
-        return False
+        ok = r.returncode == 0
+        if not ok:
+            try:
+                err = (r.stderr or b"").decode("utf-8", "replace")
+            except Exception:
+                err = ""
+            try:
+                out = (r.stdout or b"").decode("utf-8", "replace")
+            except Exception:
+                out = ""
+            detalle = (err or out or "").strip().replace("\r", "").replace("\n", " | ")
+            if len(detalle) > 400:
+                detalle = detalle[-400:]
+    except Exception as e:
+        detalle = str(e)[-200:]
+    return ok, detalle
 
 def main():
     # valores por defecto: si algo falla a mitad de camino quedan como NONE
@@ -69,9 +84,11 @@ def main():
     log("candidatos: " + ",".join(c[0] for c in cand))
 
     for path, mode, args in cand:
-        ok = probe(path, args)
+        ok, detalle = probe(path, args)
         log("probe " + mode + " " + path + " -> " + ("OK" if ok else "no"))
         if not ok:
+            if detalle:
+                log("detalle: " + detalle)
             continue
         wfile("cp_elige_ok.txt", "CUSTOM")
         wfile("cp_elige_mod.txt", mode)

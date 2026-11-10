@@ -367,7 +367,13 @@ goto :menu
 
 :dep_prueba_full
 call :elige_python
-if "%PYOK%"=="none" goto dep_diagnostico
+if "%PYOK%"=="none" if not defined PYINS goto dep_diagnostico
+if "%PYOK%"=="none" (
+  REM las librerias quedaron en PYINS: seguimos reparando con ese interprete
+  set "PYOK=custom"
+  set "PYMODE=direct"
+  set "PYEXE=%PYINS%"
+)
 echo [3/3] Comprobando cada una de las 12 y reparando lo que falla...
 set "FALLOS="
 for %%p in ("fastapi fastapi" "uvicorn uvicorn" "mss mss" "PIL Pillow" "psutil psutil" "pyautogui pyautogui" "qrcode qrcode" "numpy numpy" "soundcard soundcard" "pycaw pycaw" "comtypes comtypes" "win32api pywin32") do (
