@@ -61,6 +61,7 @@ echo =========================================
 echo    CONTROL PC - iniciando servidor...
 echo =========================================
 echo.
+echo [1/3] Buscando un Python con las librerias de Control PC...
 call :elige_python
 if "%PYOK%"=="none" (
   echo [X] No hay un Python con las librerias de Control PC en esta PC.
@@ -68,26 +69,19 @@ if "%PYOK%"=="none" (
   pause
   goto :menu
 )
-echo [OK] Python listo (modo: %PYOK%).
-echo Abriendo servidor (cierra la ventana para detenerlo)...
-set "BUCLE=iniciar_loop_plain"
-if "%PYOK%"=="py312" set "BUCLE=iniciar_loop_py312"
-goto %BUCLE%
-:iniciar_loop_plain
-python servidor.py
-goto iniciar_check
-:iniciar_loop_py312
-"%PYEXE%" -3.12 servidor.py
-:iniciar_check
-if "%errorlevel%" EQU "3" (
-  echo [OK] Ya hay otro servidor corriendo. Esta copia termina sin cambiar nada.
-  pause
-  goto :menu
+echo [2/3] Python elegido (modo: %PYOK%).
+echo [3/3] Abriendo el servidor en SU PROPIA ventana...
+if "%PYOK%"=="py312" (
+  start "CONTROL PC - Servidor" cmd /k "%PYEXE8% -3.12 servidor.py"
+) else (
+  start "CONTROL PC - Servidor" cmd /k python servidor.py
 )
 echo.
-echo El servidor se cerro inesperadamente. Reiniciando en 3 segundos...
-timeout /t 3 /nobreak >nul
-goto %BUCLE%
+echo El servidor corre en SU PROPIA ventana (alli ves la IP, la clave y los QR).
+echo Esa ventana NO se cierra sola: si el servidor falla, veras el error dentro.
+echo (Para detener el servidor, cierra esa ventana del servidor.)
+pause
+goto :menu
 
 :respaldo_auto
 echo Autoarranque pendiente 60 s ^(respaldo: si el servidor de admin nunca arranco)...
@@ -115,26 +109,15 @@ if "%PYOK%"=="none" (
   exit /b 1
 )
 echo [OK] Python listo (modo: %PYOK%).
-echo Abriendo servidor como ADMINISTRADOR (cierra la ventana para detenerlo)...
-set "BUCLE=admin_loop_plain"
-if "%PYOK%"=="py312" set "BUCLE=admin_loop_py312"
-goto %BUCLE%
-:admin_loop_plain
-python servidor.py
-goto admin_check
-:admin_loop_py312
-"%PYEXE%" -3.12 servidor.py
-:admin_check
-set "EC=%errorlevel%"
-if "%EC%" EQU "3" (
-  echo [OK] Ya habia otro servidor corriendo. Este sale sin cambiar nada.
-  pause
-  exit /b 0
+echo Abriendo servidor ELEVADO en una ventana aparte...
+if "%PYOK%"=="py312" (
+  start "CONTROL PC - Servidor (admin)" cmd /k "%PYEXE8% -3.12 servidor.py"
+) else (
+  start "CONTROL PC - Servidor (admin)" cmd /k python servidor.py
 )
-echo.
-echo El servidor se cerro. Reiniciando en 3 segundos...
-timeout /t 3 /nobreak >nul
-goto %BUCLE%
+echo Ventana del servidor ADMIN abierta (puede rechazar UAC desde el telefono).
+pause
+goto :menu
 
 :login
 cd /d "%BASE%"
@@ -446,6 +429,7 @@ for /f "delims=" %%p in ('where py 2^>nul') do (
   "%%p" -3.12 -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1
   if not errorlevel 1 (
     set "PYEXE=%%p"
+    for %%q in ("%%p") do set "PYEXE8=%%~sq"
     set "PYOK=py312"
   )
 )
