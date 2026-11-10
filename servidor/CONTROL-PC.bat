@@ -1,6 +1,10 @@
 @echo off
 title CONTROL PC - MENU MAESTRO
 chcp 65001 >nul
+REM bitacora de diagnostico (sobrevive cierres de consola)
+set "PLOG=%TEMP%\maestro_debug.txt"
+if "%~1"=="" del "%PLOG%" >nul 2>&1
+echo [%DATE% %TIME%] arranque del maestro >> "%PLOG%"
 
 REM ---------------------------------------------------------------
 REM Encuentra la carpeta del servidor automaticamente:
@@ -62,19 +66,24 @@ echo    CONTROL PC - iniciando servidor...
 echo =========================================
 echo.
 echo [1/3] Buscando un Python con las librerias de Control PC...
+echo [%TIME%] [1] probar pythons... >> "%PLOG%"
 call :elige_python
+echo [%TIME%] [1] elige listo: PYOK=%PYOK% PYMODE=%PYMODE% >> "%PLOG%"
 if "%PYOK%"=="none" (
   echo [X] No hay un Python con las librerias de Control PC en esta PC.
   echo     Corre la opcion [9] (INSTALAR TODO) y vuelve a intentarlo.
   pause
   goto :menu
 )
-echo [2/3] Python elegido (modo: %PYOK%).
+echo [2/3] Python elegido (modo: %PYOK% %PYMODE%).
 echo [3/3] Abriendo el servidor en SU PROPIA ventana...
-if "%PYOK%"=="py312" (
+echo [%TIME%] [1] abriendo ventana del servidor >> "%PLOG%"
+if "%PYOK%"=="plain" (
+  start "CONTROL PC - Servidor" cmd /k python servidor.py
+) else if "%PYMODE%"=="py" (
   start "CONTROL PC - Servidor" cmd /k "%PYEXE8% -3.12 servidor.py"
 ) else (
-  start "CONTROL PC - Servidor" cmd /k python servidor.py
+  start "CONTROL PC - Servidor" cmd /k "%PYEXE8% servidor.py"
 )
 echo.
 echo El servidor corre en SU PROPIA ventana (alli ves la IP, la clave y los QR).
@@ -108,12 +117,14 @@ if "%PYOK%"=="none" (
   pause
   exit /b 1
 )
-echo [OK] Python listo (modo: %PYOK%).
+echo [OK] Python listo (modo: %PYOK% %PYMODE%).
 echo Abriendo servidor ELEVADO en una ventana aparte...
-if "%PYOK%"=="py312" (
+if "%PYOK%"=="plain" (
+  start "CONTROL PC - Servidor (admin)" cmd /k python servidor.py
+) else if "%PYMODE%"=="py" (
   start "CONTROL PC - Servidor (admin)" cmd /k "%PYEXE8% -3.12 servidor.py"
 ) else (
-  start "CONTROL PC - Servidor (admin)" cmd /k python servidor.py
+  start "CONTROL PC - Servidor (admin)" cmd /k "%PYEXE8% servidor.py"
 )
 echo Ventana del servidor ADMIN abierta (puede rechazar UAC desde el telefono).
 pause
@@ -131,7 +142,7 @@ if "%PYOK%"=="none" (
 cls
 REM Muestra: contrasena actual + dias restantes + QR RAPIDO (entra sin escribir)
 REM y QR NORMAL (pide la clave). Cambia con la clave porque la incluye.
-if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 servidor.py --loginqr ) else python servidor.py --loginqr
+call :pyrun servidor.py --loginqr
 echo.
 echo   Quieres obtener una nueva contrasena? Y/N
 set "RESP="
@@ -152,7 +163,7 @@ set /p MODO=<"%TEMP%\cp_rotar.txt"
 if "%MODO%"=="servidor" (
   echo   [OK] El servidor en ejecucion genero la nueva clave.
 ) else (
-  if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 servidor.py --rotar ) else python servidor.py --rotar
+  call :pyrun servidor.py --rotar
   if errorlevel 1 (
     echo [X] No se pudo renovar.
     pause
@@ -175,9 +186,10 @@ if errorlevel 1 (
 echo Agregando la regla del Firewall para el telefono (puerto 8566 + python.exe)...
 netsh advfirewall firewall add rule name="Control PC" dir=in action=allow protocol=TCP localport=8566
 REM regla por PROGRAMA: siempre permite al python.exe recibir conexiones
-set "PYEXE="
-for /f "delims=" %%p in ('where python 2^>nul') do if not defined PYEXE set "PYEXE=%%p"
-if not "%PYEXE%"=="" netsh advfirewall firewall add rule name="Control PC - python allow" dir=in action=allow program="%PYEXE%" protocol=TCP enable=yes profile=any >nul 2>&1
+set "PYEXE_F="
+where python > "%TEMP%\cp_py.txt" 2>nul
+for /f "delims=" %%p in (%TEMP%\cp_py.txt) do if not defined PYEXE_F set "PYEXE_F=%%p"
+if not "%PYEXE_F%"=="" netsh advfirewall firewall add rule name="Control PC - python allow" dir=in action=allow program="%PYEXE_F%" protocol=TCP enable=yes profile=any >nul 2>&1
 echo.
 netsh advfirewall firewall show rule name="Control PC" | findstr /i "8566"
 echo.
@@ -259,7 +271,7 @@ if errorlevel 1 (
   goto :menu
 )
 echo [3/3] Abriendo la pantalla con IP y QR para conectar desde cualquier lugar:
-if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 servidor.py --tailscale ) else python servidor.py --tailscale
+call :pyrun servidor.py --tailscale
 echo.
 echo PASOS FINALES:
 echo   1) En el telefono: instala la app Tailscale e inicia sesion con la MISMA cuenta.
@@ -307,8 +319,9 @@ echo    (Python 3.12 estable + las 12 librerias ya compiladas)
 echo ============================================================
 echo.
 echo [1/3] Poniendo un Python compatible...
+echo [%TIME%] [9] iniciar instalacion >> "%PLOG%"
 call :elige_python
-if "%PYOK%"=="py312" goto dep_libs_instalar
+if "%PYOK%"=="custom" goto dep_prueba_full
 if "%PYOK%"=="plain" goto dep_prueba_full
 echo       No hay ninguno util; instalando Python 3.12 (tiene TODOS los compilados)...
 where winget >nul 2>nul
@@ -322,41 +335,26 @@ powershell -NoProfile -Command "$f=[IO.Path]::Combine([IO.Path]::GetTempPath(),'
 
 :dep_py_dete
 REM refresca la ruta del launcher de ESTA ventana
+echo [%TIME%] [9] instalado; redetectando python... >> "%PLOG%"
 set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Python\Launcher;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;%LOCALAPPDATA%\Programs\Python\Python312"
-for /f "delims=" %%p in ('where py 2^>nul') do set "PYEXE=%%p"
-if not defined PYEXE (
-  echo [X] No encontre el Python 3.12. Cierra el maestro y abre de nuevo.
-  pause
-  goto :menu
-)
-"%PYEXE%" -3.12 --version >nul 2>&1
-if errorlevel 1 (
-  echo [X] Python 3.12 no quedo usable. Reinicia la PC y corre [9] otra vez.
-  pause
-  goto :menu
-)
-set "PYOK=py312"
-echo [OK] Python 3.12 listo.
+call :elige_python
+if "%PYOK%"=="none" goto dep_libs_instalar
+echo [OK] Ya hay un Python con todo: comprobando librerias...
+goto dep_prueba_full
 
 :dep_libs_instalar
 echo [2/3] Instalando las 12 librerias del servidor (demora unos minutos)...
-if "%PYOK%"=="py312" goto dep_libs_py312
-python -m pip install --upgrade pip --quiet --no-input
-python -m pip install -r "%BASE%requisitos.txt" --no-input
-goto dep_libs_check
-:dep_libs_py312
-"%PYEXE%" -3.12 -m pip install --upgrade pip --quiet --no-input
-"%PYEXE%" -3.12 -m pip install -r "%BASE%requisitos.txt" --no-input
-:dep_libs_check
+set "PYINS="
+if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "PYINS=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+if not defined PYINS if exist "%ProgramFiles%\Python312\python.exe" set "PYINS=%ProgramFiles%\Python312\python.exe"
+if not defined PYINS set "PYINS=python"
+echo      usando: %PYINS%
+"%PYINS%" -m pip install --upgrade pip --quiet --no-input
+"%PYINS%" -m pip install -r "%BASE%requisitos.txt" --no-input
 if not errorlevel 1 goto dep_prueba_full
 echo.
 echo [i] Reintentando solo con paquetes YA compilados (sin herramientas C++)...
-if "%PYOK%"=="py312" goto dep_ruedas_py312
-python -m pip install -r "%BASE%requisitos.txt" --no-input --only-binary=:all:
-goto dep_ruedas_check
-:dep_ruedas_py312
-"%PYEXE%" -3.12 -m pip install -r "%BASE%requisitos.txt" --no-input --only-binary=:all:
-:dep_ruedas_check
+"%PYINS%" -m pip install -r "%BASE%requisitos.txt" --no-input --only-binary=:all:
 if not errorlevel 1 goto dep_prueba_full
 echo.
 echo [X] pip no pudo: a esa version de Python le faltan compilaciones para Windows.
@@ -367,6 +365,8 @@ pause
 goto :menu
 
 :dep_prueba_full
+call :elige_python
+if "%PYOK%"=="none" goto dep_diagnostico
 echo [3/3] Comprobando cada una de las 12 y reparando lo que falla...
 set "FALLOS="
 for %%p in ("fastapi fastapi" "uvicorn uvicorn" "mss mss" "PIL Pillow" "psutil psutil" "pyautogui pyautogui" "qrcode qrcode" "numpy numpy" "soundcard soundcard" "pycaw pycaw" "comtypes comtypes" "win32api pywin32") do (
@@ -380,30 +380,34 @@ echo     https://visualstudio.microsoft.com/visual-cpp-build-tools/
 pause
 goto :menu
 
+:dep_diagnostico
+echo.
+echo [X] Ningun Python quedo usable en esta PC. Revisa la bitacora:
+echo     %PLOG%
+pause
+goto :menu
+
 :dep_todo_bien
 echo.
 echo ==================================================
 echo   TODO LISTO (las 12 importan bien). Esta PC
 echo   ya puede correr el servidor:
 echo   opcion [1] (o [2] admin). Todas las opciones
-echo   usan este mismo Python (modo: %PYOK%).
+echo   usan este mismo Python automaticamente.
 echo ==================================================
 pause
 goto :menu
 
 :dep_toca
 REM %1 = nombre para "import X" | %2 = nombre del paquete en pip
-if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 -c "import %~1" 2>nul ) else ( python -c "import %~1" 2>nul )
+call :pyrun -c "import %~1"
 if not errorlevel 1 (
   echo   [OK] %~1
   goto :eof
 )
 echo   reparando %~2 ...
-if "%PYOK%"=="py312" "%PYEXE%" -3.12 -m pip install --upgrade --only-binary=:all: %~2 >nul 2>&1
-if "%PYOK%"=="py312" goto dep_toca_py
-python -m pip install --upgrade --only-binary=:all: %~2 >nul 2>&1
-:dep_toca_py
-if "%PYOK%"=="py312" ( "%PYEXE%" -3.12 -c "import %~1" 2>nul ) else ( python -c "import %~1" 2>nul )
+call :pyrun -m pip install --upgrade --only-binary=:all: %~2 >nul 2>&1
+call :pyrun -c "import %~1"
 if errorlevel 1 (
   call set "FALLOS=%%FALLOS%% %~1"
   echo   [X] %~1 sigue roto
@@ -414,25 +418,68 @@ goto :eof
 
 :elige_python
 REM Elige un Python que SI tenga las librerias de Control PC:
-REM   PYOK=plain -> el "python" del PATH | PYOK=py312 -> launcher py (3.12) | PYOK=none -> nada sirve
-REM   ( con py312 tambien deja en PYEXE la ruta del launcher )
+REM   PYOK=plain  -> usar "python" del PATH (tiene las 12)
+REM   PYOK=custom -> usar PYEXE (PYMODE: "py"=launcher 3.12 | "direct"=python.exe) que SI las tiene
+REM   PYOK=none   -> nada sirve (correr [9])
 set "PYOK=none"
 set "PYEXE="
+set "PYMODE="
 where python >nul 2>nul
-if errorlevel 1 goto elige_py312
+echo [elige] where python = %errorlevel% >> "%PLOG%"
+if errorlevel 1 goto elige_alt
 python -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1
-if errorlevel 1 goto elige_py312
-set "PYOK=plain"
-goto :eof
-:elige_py312
-for /f "delims=" %%p in ('where py 2^>nul') do (
-  "%%p" -3.12 -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1
-  if not errorlevel 1 (
-    set "PYEXE=%%p"
-    for %%q in ("%%p") do set "PYEXE8=%%~sq"
-    set "PYOK=py312"
-  )
+set "EC=%errorlevel%"
+echo [elige] import python = %EC% >> "%PLOG%"
+if "%EC%"=="0" (
+  set "PYOK=plain"
+  echo [elige] resultado: plain >> "%PLOG%"
+  goto :eof
 )
-if "%PYOK%"=="py312" goto :eof
+:elige_alt
+echo [elige] buscando interpretes alternativos (sin stubs de la tienda)... >> "%PLOG%"
+where py > "%TEMP%\cp_py.txt" 2>nul
+echo [elige] where py = %errorlevel% >> "%PLOG%"
+for /f "delims=" %%p in (%TEMP%\cp_py.txt) do call :elige_testa "%%p" py
+if exist "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" call :elige_testa "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" py
+if "%PYOK%"=="custom" goto elige_listo
+for /d %%d in ("%LOCALAPPDATA%\Programs\Python\Python3*") do call :elige_testa "%%d\python.exe" direct
+if "%PYOK%"=="custom" goto elige_listo
+for /d %%d in ("%ProgramFiles%\Python3*") do call :elige_testa "%%d\python.exe" direct
+if "%PYOK%"=="custom" goto elige_listo
 set "PYOK=none"
+echo [elige] resultado: none >> "%PLOG%"
+goto :eof
+:elige_listo
+echo [elige] resultado: custom (%PYMODE% %PYEXE%) >> "%PLOG%"
+goto :eof
+
+:elige_testa
+REM %1 = exe entre comillas | %2 = modo: py (usa -3.12) | direct (sin version)
+set "CAND=%~1"
+if not "%CAND%"=="%CAND:WindowsApps=%" (
+  echo [elige] descartado (alias de la tienda): %CAND% >> "%PLOG%"
+  goto :eof
+)
+if not exist "%CAND%" (
+  echo [elige] no existe: %CAND% >> "%PLOG%"
+  goto :eof
+)
+if "%PYOK%"=="custom" goto :eof
+if "%~2"=="py" ( "%CAND%" -3.12 -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1 ) else ( "%CAND%" -c "import fastapi, uvicorn, mss, PIL, psutil, pyautogui, qrcode, numpy, soundcard, pycaw, comtypes, win32api" >nul 2>&1 )
+set "EC=%errorlevel%"
+echo [elige] probe %~2 de %CAND% = %EC% >> "%PLOG%"
+if not "%EC%"=="0" goto :eof
+set "PYEXE=%CAND%"
+set "PYMODE=%~2"
+for %%q in ("%CAND%") do set "PYEXE8=%%~sq"
+set "PYOK=custom"
+goto :eof
+
+:pyrun
+REM ejecuta %* con el interprete elegido por :elige_python
+if "%PYOK%"=="plain" goto pyrun_plain
+if "%PYMODE%"=="py" ( "%PYEXE%" -3.12 %* ) else ( "%PYEXE%" %* )
+goto :eof
+:pyrun_plain
+python %*
 goto :eof
