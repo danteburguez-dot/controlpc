@@ -71,7 +71,7 @@ call :elige_python
 echo [%TIME%] [1] elige listo: PYOK=%PYOK% PYMODE=%PYMODE% >> "%PLOG%"
 if "%PYOK%"=="none" (
   echo [X] No hay un Python con las librerias de Control PC en esta PC.
-  echo     Corre la opcion [9] (INSTALAR TODO) y vuelve a intentarlo.
+  echo     Corre la opcion [9] INSTALAR TODO y vuelve a intentarlo.
   pause
   goto :menu
 )
@@ -113,7 +113,7 @@ if errorlevel 1 netsh advfirewall firewall add rule name="Control PC" dir=in act
 call :elige_python
 if "%PYOK%"=="none" (
   echo [X] No hay un Python con las librerias de Control PC.
-  echo     Corre la opcion [9] (INSTALAR TODO) primero.
+  echo     Corre la opcion [9] INSTALAR TODO primero.
   pause
   exit /b 1
 )
@@ -134,7 +134,7 @@ goto :menu
 cd /d "%BASE%"
 call :elige_python
 if "%PYOK%"=="none" (
-  echo [X] No hay un Python con las librerias. Corre la opcion [9] (INSTALAR TODO).
+  echo [X] No hay un Python con las librerias. Corre la opcion [9] INSTALAR TODO.
   pause
   goto :menu
 )
@@ -169,7 +169,7 @@ if "%MODO%"=="servidor" (
     pause
     goto :menu
   )
-  echo   [OK] Clave renovada en config.json (el servidor estaba apagado).
+  echo   [OK] Clave renovada en config.json - el servidor estaba apagado.
 )
 echo.
 echo   Presiona una tecla para ver la NUEVA contrasena con su QR...
@@ -240,7 +240,7 @@ goto :menu
 cd /d "%BASE%"
 call :elige_python
 if "%PYOK%"=="none" (
-  echo [X] No hay un Python con las librerias. Corre la opcion [9] (INSTALAR TODO).
+  echo [X] No hay un Python con las librerias. Corre la opcion [9] INSTALAR TODO.
   pause
   goto :menu
 )
@@ -457,7 +457,7 @@ goto :eof
 REM %1 = exe entre comillas | %2 = modo: py (usa -3.12) | direct (sin version)
 set "CAND=%~1"
 if not "%CAND%"=="%CAND:WindowsApps=%" (
-  echo [elige] descartado (alias de la tienda): %CAND% >> "%PLOG%"
+  echo [elige] descartado, alias de la tienda: %CAND% >> "%PLOG%"
   goto :eof
 )
 if not exist "%CAND%" (
