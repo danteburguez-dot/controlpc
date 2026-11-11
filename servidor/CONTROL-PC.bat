@@ -42,10 +42,11 @@ echo   [6] Tailscale: acceso desde CUALQUIER lugar del mundo
 echo   [7] Auditoria de paquetes (ve que bloquea al telefono)
 echo   [8] HOTSPOT automatico (lleva el telefono a la red del PC, SIN ROUTER)
 echo   [9] INSTALAR TODO: Python + las 12 librerias (PC nueva lista en un clic)
+echo  [10] LIMPIAR: desinstala las librerias (Python y C++ quedan intactos)
 echo   [0] Salir
 echo.
 set "OPC="
-set /p OPC="   Elige una opcion (0-9): "
+set /p OPC="   Elige una opcion (0-10): "
 if "%OPC%"=="1" goto :iniciar
 if "%OPC%"=="2" goto :admin
 if "%OPC%"=="3" goto :login
@@ -55,6 +56,7 @@ if "%OPC%"=="6" goto :tscale
 if "%OPC%"=="7" goto :auditia
 if "%OPC%"=="8" goto :hotsp
 if "%OPC%"=="9" goto :instalar_todo
+if "%OPC%"=="10" goto :limpiar
 if "%OPC%"=="0" exit /b 0
 goto :menu
 
@@ -471,3 +473,44 @@ goto :eof
 :pyrun_plain
 python %*
 goto :eof
+
+:limpiar
+cd /d "%BASE%"
+echo ============================================================
+echo    LIMPIAR LIBRERIAS DE CONTROL PC
+echo    desinstala las 12 librerias y sus dependencias;
+echo    Python y las herramientas C++ quedan INTACTOS.
+echo    (Si te arrepientes: la [9] reinstala todo en un clic)
+echo ============================================================
+echo.
+echo   Escribe SI para confirmar la limpieza (otra cosa cancela):
+set "RESP="
+set /p RESP="   > "
+if /i "%RESP%"=="SI" goto limpiar_ir
+if /i "%RESP%"=="S" goto limpiar_ir
+if /i "%RESP%"=="Y" goto limpiar_ir
+echo Cancelado. No se desinstalo nada.
+pause
+goto :menu
+
+:limpiar_ir
+call :elige_python
+if "%PYOK%"=="none" (
+  echo [i] No hay un Python con las librerias del proyecto: nada que limpiar.
+  pause
+  goto :menu
+)
+echo [1/2] Desinstalando las librerias con el Python elegido...
+call :pyrun -m pip uninstall -y fastapi uvicorn mss Pillow psutil pyautogui qrcode numpy soundcard pycaw comtypes pywin32 PyYAML pydantic pydantic-core annotated-types annotated-doc starlette anyio idna h11 httptools python-dotenv watchfiles websockets cffi pycparser click colorama sniffio typing-extensions typing-inspection pymsgbox pygetwindow pytweening pyscreeze mouseinfo pyrect pyperclip opentelemetry-api
+echo [2/2] Comprobando que quedo limpio...
+call :pyrun -c "import fastapi" 2>nul
+if errorlevel 1 (
+  echo   [OK] Limpieza completa: las librerias ya no estan.
+) else (
+  echo   [!] fastapi sigue instalado; corre esta opcion otra vez.
+)
+echo.
+echo Python y las herramientas C++ NO se tocan.
+echo Si te arrepientes: la opcion [9] reinstala todo en un clic.
+pause
+goto :menu

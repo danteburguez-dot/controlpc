@@ -15,7 +15,7 @@
 
 | Archivo | Qué hace | ¿Doble clic? |
 |---|---|---|
-| **`CONTROL-PC.bat`** | ⭐ **MENÚ MAESTRO — el ÚNICO `.bat`**: servidor [1], admin [2], login+QR [3], firewall [4], autoarranque [5], Tailscale [6], auditoría [7], hotspot [8] e **INSTALAR TODO [9]** (Python + las 12 librerías; todo fusionado adentro: ya no hay `.bat` separados) | ✅ la forma más cómoda de usar todo |
+| **`CONTROL-PC.bat`** | ⭐ **MENÚ MAESTRO — el ÚNICO `.bat`**: servidor [1], admin [2], login+QR [3], firewall [4], autoarranque [5], Tailscale [6], auditoría [7], hotspot [8], **INSTALAR TODO [9]** (Python + las 12 librerías) y **LIMPIAR [10]** (desinstala las librerías; Python/C++ quedan) — todo fusionado adentro: ya no hay `.bat` separados | ✅ la forma más cómoda de usar todo |
 | `config.json` | guarda tu contraseña y ajustes (no se borra al actualizar) | no tocar |
 
 > La contraseña la ves en la **consola** al arrancar, o con la opción **[3]**
@@ -70,6 +70,7 @@ por si acaso; **esta es la razón número 1** por la que "no conecta" aún.)
 | **[7]** | 🕵️ **Auditoría de paquetes**: 90 s grabando los intentos de conexión del teléfono → deja el resultado en `servidor\eventos_8566.txt`. |
 | **[8]** | 📶 **HOTSPOT** automático de Windows: el teléfono entra directo a la red de la PC **sin router**. |
 | **[9]** | 📦 **INSTALAR TODO en una PC nueva**: instala **Python 3.12** — la estable que trae *todas* las librerías de Windows ya compiladas (evita el error de "Microsoft C++ Build Tools" con las Python recién salidas) — **+ las 12 librerías** de `requisitos.txt`, con **reintentos solo de ruedas** y una comprobación final **librería por librería que repara sola la que esté rota** (upgrade si un import falla). Después, todas las opciones ([1]/[2]/[3]/[6]) usan ese Python automáticamente. |
+| **[10]** | 🧹 **LIMPIAR**: desinstala las 12 librerías **y sus dependencias** (pide escribir `SI` para confirmar). **Python y las herramientas C++ quedan intactos** — y si te arrepientes, la [9] lo reinstala todo en un clic. |
 
 - Los modos especiales `--loginqr`, `--tailscale` y `--rotar` de `servidor.py` son los que el maestro ejecuta internamente.
 
@@ -346,7 +347,7 @@ Más detalles en [`apk-flutter/README-APK.md`](apk-flutter/README-APK.md).
 ```
 ControlPC/
 ├── servidor/              servidor Python (Windows)
-│   ├── CONTROL-PC.bat     ⭐ MENÚ MAESTRO — el único .bat (opciones 1–9, [9] = INSTALAR TODO)
+│   ├── CONTROL-PC.bat     ⭐ MENÚ MAESTRO — el único .bat (opciones 1–10: [9] instala, [10] limpia)
 │   ├── regla_firewall.ps1  helper del Firewall
 │   ├── servidor.py        todo el servidor (captura + eventos + estado + audio + avisos)
 │   ├── requisitos.txt     librerías a instalar
